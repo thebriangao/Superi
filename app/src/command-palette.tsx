@@ -154,7 +154,7 @@ export function CommandPalette({
       ref={dialogRef}
       aria-modal="true"
       aria-labelledby="command-palette-title"
-      aria-describedby="command-palette-description"
+      aria-describedby="command-palette-description screen-reader-dialogs-help"
       onKeyDown={handleDialogKeyDown}
       onCancel={(event) => {
         event.preventDefault();

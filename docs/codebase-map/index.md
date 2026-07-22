@@ -84,6 +84,12 @@ tabpanel, focus and complete state replace through atomic polite statuses, notif
 through a non-atomic polite log, and local intelligent results remain labelled editable project
 state with explicit stale-source alerts.
 
+A separate frozen schema-1 screen-reader catalog now connects stable guidance to the real project,
+media, timeline, inspector, mixer, typed graph, color scopes, background jobs, and dialog consumers.
+The application renders each description once in the accessibility tree, each required surface
+references its exact identity, and existing keyboard, live-region, progress, modal, project, and
+typed graph owners remain unchanged.
+
 One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
 project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
 route exposes that exact identity and every invariant while capability availability, physical
@@ -2621,6 +2627,10 @@ roles, route-to-workflow and workflow-to-status relationships, atomic replacemen
 non-atomic notification additions, deep freezing, and fail-closed unknown lookup. Application
 source contracts freeze the real route, workspace, panel, feedback, and editable intelligent-result
 consumers; physical accessibility-API interaction remains platform-lane evidence.
+The focused screen-reader-support contracts prove exact nine-surface order, unique description
+identities, actionable guidance, browse, edit, monitor, and modal classifications, typed graph
+action preservation, deep freezing, fail-closed lookup, and real consumer references. Physical
+screen-reader and braille interaction remains platform-lane evidence.
 The focused platform-parity contracts prove exact target and domain coverage, unique ordering,
 shared frozen object identity, complete audio timing and routing meaning, and unsupported-label
 rejection. Application source contracts freeze the visible System consumer and exclude native or

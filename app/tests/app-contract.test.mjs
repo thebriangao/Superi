@@ -259,6 +259,31 @@ test("major surfaces expose shared assistive semantics and editable intelligent 
   );
 });
 
+test("screen-reader guidance is connected to every required professional surface", () => {
+  const support = read(resolve(appRoot, "src/screen-reader-support.ts"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const workspaces = read(resolve(appRoot, "src/editor-workspaces.tsx"));
+  const inspector = read(resolve(appRoot, "src/application-inspector-panel.tsx"));
+  const presentation = read(resolve(appRoot, "src/application-presentation.tsx"));
+  const palette = read(resolve(appRoot, "src/command-palette.tsx"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  for (const surface of [
+    "project", "media", "timeline", "inspector", "mixer",
+    "graph", "scopes", "jobs", "dialogs",
+  ]) assert.match(support, new RegExp(`${surface}: support\\(`));
+  assert.match(app, /data-screen-reader-surface-guide/);
+  assert.match(app, /SCREEN_READER_SURFACES\.media\.descriptionId/);
+  assert.match(workspaces, /SCREEN_READER_SURFACES\.timeline\.descriptionId/);
+  assert.match(workspaces, /SCREEN_READER_SURFACES\.graph\.descriptionId/);
+  assert.match(workspaces, /SCREEN_READER_SURFACES\.mixer\.descriptionId/);
+  assert.match(workspaces, /SCREEN_READER_SURFACES\.scopes\.descriptionId/);
+  assert.match(inspector, /SCREEN_READER_SURFACES\.inspector\.descriptionId/);
+  assert.match(presentation, /SCREEN_READER_SURFACES\.jobs\.descriptionId/);
+  assert.match(palette, /screen-reader-dialogs-help/);
+  assert.match(packageJson.scripts.test, /screen-reader-support\.test\.ts/);
+});
+
 test("panel workspace exposes real dock, tab, resize, hide, and continuity behavior", () => {
   const application = read(resolve(appRoot, "src/application.ts"));
   const panelWorkspace = read(resolve(appRoot, "src/panel-workspace.tsx"));

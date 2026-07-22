@@ -129,6 +129,10 @@ import {
   keyboardLandmarkDirection,
 } from "./focus-management.ts";
 import { projectHistoryPresentation } from "./project-history.ts";
+import {
+  SCREEN_READER_SURFACE_ORDER,
+  SCREEN_READER_SURFACES,
+} from "./screen-reader-support.ts";
 import { ProjectHistoryControls } from "./project-history-controls.tsx";
 import {
   capabilityFailureText,
@@ -1741,6 +1745,16 @@ function ApplicationShell() {
       >
         Skip to active workflow
       </a>
+      <div className="accessibility-only" data-screen-reader-surface-guide>
+        {SCREEN_READER_SURFACE_ORDER.map((surfaceId) => {
+          const surface = SCREEN_READER_SURFACES[surfaceId];
+          return (
+            <p id={surface.descriptionId} key={surface.id}>
+              {surface.description}
+            </p>
+          );
+        })}
+      </div>
       <aside
         className="application-sidebar"
         aria-label="Application routes"
@@ -3133,7 +3147,10 @@ function SystemPanel() {
         ))}
       </section>
 
-      <section aria-labelledby="project-lifecycle-title">
+      <section
+        aria-describedby={SCREEN_READER_SURFACES.project.descriptionId}
+        aria-labelledby="project-lifecycle-title"
+      >
         <h4 id="project-lifecycle-title">Project lifecycle</h4>
         <p className="explanation">
           {projectSnapshot?.active
@@ -3231,7 +3248,12 @@ function SystemPanel() {
         ) : null}
 
         {projectSnapshot?.active && mediaLibrary ? (
-          <section className="media-browser" data-testid="media-browser">
+          <section
+            className="media-browser"
+            data-testid="media-browser"
+            aria-describedby={SCREEN_READER_SURFACES.media.descriptionId}
+            aria-label={SCREEN_READER_SURFACES.media.label}
+          >
             <header className="media-browser-header">
               <div>
                 <p className="eyebrow">Project media</p>

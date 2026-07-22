@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useApplication } from "./application-context.tsx";
 import { createApplicationInspectorModel } from "./application-inspector.ts";
 import { useApplicationPresentation } from "./application-presentation.tsx";
+import { SCREEN_READER_SURFACES } from "./screen-reader-support.ts";
 import "./application-inspector.css";
 
 export function ApplicationInspectorPanel() {
@@ -94,7 +95,13 @@ export function ApplicationInspectorPanel() {
   };
 
   return (
-    <div className="panel-content application-inspector" data-testid="application-inspector">
+    <div
+      className="panel-content application-inspector"
+      data-testid="application-inspector"
+      aria-describedby={SCREEN_READER_SURFACES.inspector.descriptionId}
+      aria-label={SCREEN_READER_SURFACES.inspector.label}
+      role="region"
+    >
       <header className="application-inspector__header">
         <div>
           <p className="eyebrow">Shared operational view</p>

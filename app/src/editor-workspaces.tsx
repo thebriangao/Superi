@@ -17,6 +17,7 @@ import {
 import { TimelineWorkspace } from "./timeline-workspace.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import type { ViewerTemporalContext } from "./viewer-comparison.ts";
+import { SCREEN_READER_SURFACES } from "./screen-reader-support.ts";
 
 export function EditingWorkspacePanel() {
   const {
@@ -75,22 +76,27 @@ export function EditingWorkspacePanel() {
       <EditorialAudioMeters feedback={editorialFeedback?.audio ?? null} />
       {snapshot ? (
         <>
-          <TimelineWorkspace
-            document={snapshot.timeline.document}
-            rootTimelineId={snapshot.project.root_timeline_id}
-            snapshot={snapshot}
-            playback={snapshot.playback}
-            selection={state.selection}
-            dispatchSelection={dispatch}
-            selectionSchemaVersion={snapshot.schema_version}
-            selectionRevision={snapshot.project.project_revision}
-            mutateTracks={mutateTracks}
-            executeProjectActions={executeProjectActions}
-            sourceMonitor={sourceMonitor}
-            onExecuteProjectCommand={executeProjectCommand}
-            mutateMarkers={mutateMarkers}
-            onEditorialFeedback={setEditorialFeedback}
-          />
+          <section
+            aria-describedby={SCREEN_READER_SURFACES.timeline.descriptionId}
+            aria-label={SCREEN_READER_SURFACES.timeline.label}
+          >
+            <TimelineWorkspace
+              document={snapshot.timeline.document}
+              rootTimelineId={snapshot.project.root_timeline_id}
+              snapshot={snapshot}
+              playback={snapshot.playback}
+              selection={state.selection}
+              dispatchSelection={dispatch}
+              selectionSchemaVersion={snapshot.schema_version}
+              selectionRevision={snapshot.project.project_revision}
+              mutateTracks={mutateTracks}
+              executeProjectActions={executeProjectActions}
+              sourceMonitor={sourceMonitor}
+              onExecuteProjectCommand={executeProjectCommand}
+              mutateMarkers={mutateMarkers}
+              onEditorialFeedback={setEditorialFeedback}
+            />
+          </section>
           <div className="editor-summary-grid">
             <Metric label="Project" value={snapshot.project.project_id} />
             <Metric
@@ -190,7 +196,11 @@ export function CompositingWorkspacePanel() {
               value={snapshot.effect.extension_records.length}
             />
           </div>
-          <section className="editor-section">
+          <section
+            className="editor-section"
+            aria-describedby={SCREEN_READER_SURFACES.graph.descriptionId}
+            aria-label={SCREEN_READER_SURFACES.graph.label}
+          >
             <p className="section-kicker">Editable graph documents</p>
             {snapshot.graph.documents.length === 0 ? (
               <EmptyState message="No graph documents are attached to this project." />
@@ -227,11 +237,16 @@ export function ColorWorkspacePanel() {
       project={editorProject}
       refresh={refreshEditorProject}
     >
-      <NativeViewport
-        role="color"
-        label="Color"
-        temporalContext={playbackViewerTemporalContext(snapshot)}
-      />
+      <section
+        aria-describedby={SCREEN_READER_SURFACES.scopes.descriptionId}
+        aria-label={SCREEN_READER_SURFACES.scopes.label}
+      >
+        <NativeViewport
+          role="color"
+          label="Color"
+          temporalContext={playbackViewerTemporalContext(snapshot)}
+        />
+      </section>
       {snapshot ? (
         <>
           <div className="editor-summary-grid">
@@ -317,7 +332,11 @@ export function AudioWorkspacePanel() {
             <Metric label="Timeline" value={snapshot.audio.timeline_resource} />
             <Metric label="Mix document" value={snapshot.audio.clip_mix.sha256} />
           </div>
-          <section className="editor-section">
+          <section
+            className="editor-section"
+            aria-describedby={SCREEN_READER_SURFACES.mixer.descriptionId}
+            aria-label={SCREEN_READER_SURFACES.mixer.label}
+          >
             <p className="section-kicker">Exact authored audio state</p>
             {tracks.length === 0 ? (
               <EmptyState message="No authored audio tracks are present." />
@@ -496,7 +515,12 @@ function WorkspaceSurface({
 }) {
   const hasSnapshot = project.snapshot !== null;
   return (
-    <div className="panel-content editor-workspace-content">
+    <div
+      className="panel-content editor-workspace-content"
+      aria-describedby={SCREEN_READER_SURFACES.project.descriptionId}
+      aria-label={`${label} project workspace`}
+      role="region"
+    >
       <div
         className={`project-state-banner project-state-${project.status}`}
         role={project.failure ? "alert" : "status"}

@@ -33,6 +33,7 @@ import {
   focusFirstInScope,
 } from "./focus-management.ts";
 import { restoreShellFocus } from "./shell-input.ts";
+import { SCREEN_READER_SURFACES } from "./screen-reader-support.ts";
 import "./background-jobs.css";
 
 export interface ApplicationContextMenuItem {
@@ -409,9 +410,14 @@ function ProgressBar({
         <span>{progress.status}</span>
       </div>
       {progress.total === null ? (
-        <progress aria-label={`Progress for ${progress.label}`} role="progressbar" />
+        <progress
+          aria-describedby={SCREEN_READER_SURFACES.jobs.descriptionId}
+          aria-label={`Progress for ${progress.label}`}
+          role="progressbar"
+        />
       ) : (
         <progress
+          aria-describedby={SCREEN_READER_SURFACES.jobs.descriptionId}
           aria-label={`Progress for ${progress.label}`}
           max={progress.total}
           role="progressbar"
@@ -497,6 +503,7 @@ export function ApplicationFeedbackHub({
       {isOpen ? (
         <section
           aria-label="Application notification center"
+          aria-describedby={SCREEN_READER_SURFACES.dialogs.descriptionId}
           aria-labelledby="application-notification-center-title"
           className="application-notification-center"
           id="application-notification-center"
@@ -588,7 +595,11 @@ export function ApplicationFeedbackHub({
           )}
 
           {progress.length === 0 ? null : (
-            <section className="application-progress-list">
+            <section
+              className="application-progress-list"
+              aria-describedby={SCREEN_READER_SURFACES.jobs.descriptionId}
+              aria-label={SCREEN_READER_SURFACES.jobs.label}
+            >
               <header className="application-progress-list__header">
                 <h3>Background jobs</h3>
                 <div className="application-progress-list__filters">

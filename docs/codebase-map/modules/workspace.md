@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: d30aabfdccede9f160656d400ba1fd378c955e1ded8fb36f578725d3e8035702
-source_files: 377
+source_hash: de1163e87651f0886b156916c36b85f8b7f4fed57aacf75805726b534cff422a
+source_files: 380
 mapped_at_commit: working-tree
 ---
 
@@ -597,6 +597,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C007.md`: Durable implementation evidence for shared major-surface roles,
   labels, states, relationships, live-region policy, editable intelligent-result semantics, and
   unchanged project, engine, native, persistence, and inference ownership.
+- `docs/checkpoints/P3.W07.C008.md`: Durable implementation evidence for exact project, media,
+  timeline, inspector, mixer, graph, scopes, jobs, and dialog screen-reader guidance, real consumer
+  relationships, typed graph-state preservation, and unchanged lower ownership.
 
 ### Production desktop application
 
@@ -677,6 +680,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   controlled and described relationships, live politeness, and atomicity for routes, workspace
   controls, the active workflow, focus status, notification log, application status, and editable
   intelligent results without importing React, Tauri, generated APIs, persistence, or project state.
+- `app/src/screen-reader-support.ts`: Defines a frozen schema-1 catalog for the nine required
+  professional screen-reader surfaces, stable description identities, labels, browse, edit,
+  monitor, or modal interaction classes, actionable guidance, and fail-closed lookup without React,
+  Tauri, generated APIs, project mutation, or graph execution.
 - `app/src/display-scale.ts`: Defines one immutable finite display-scale observation, duplicate
   suppression, window and visual viewport listeners, dynamically re-armed resolution matching,
   cleanup, and accessible formatting without owning monitor identity, geometry, GPU, or persistence.
@@ -1280,6 +1287,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/accessibility-semantics.test.ts`: Proves schema identity, unique surface IDs, exact
   roles and relationships, non-atomic notification additions, atomic replacement statuses, deep
   freezing, and fail-closed unknown semantic-surface lookup.
+- `app/tests/screen-reader-support.test.ts`: Proves exact nine-surface order, unique identities,
+  complete labels and descriptions, edit and modal classifications, deep freezing, typed graph
+  action guidance, and fail-closed unknown lookup.
 - `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
   duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
   re-arming, cleanup, and accessible scale formatting.
