@@ -50,6 +50,10 @@
   --theme-overlay-backdrop: rgb(3 7 12 / 72%);
   --theme-overlay-shadow: 0 28px 90px rgb(0 0 0 / 62%);
   --theme-panel-shadow: 0 16px 44px rgb(0 0 0 / 18%);
+  --theme-font-size-min: 14px;
+  --theme-font-size-max: 20px;
+  --theme-focus-width: 3px;
+  --theme-focus-offset: 3px;
 
   /* Compatibility aliases for existing presentation-only media-browser styling. */
   --ink: var(--theme-text-primary);
@@ -93,4 +97,16 @@
   --marker-magenta: #b967ac;
   --marker-black: #080a0b;
   --marker-white: #e2e5df;
+}
+
+@media (prefers-contrast: more) {
+  :root,
+  :root[data-superi-theme="color-critical-dark"] {
+    --theme-border-subtle: #657075;
+    --theme-border-default: #89979d;
+    --theme-border-strong: #c6d0d2;
+    --theme-text-secondary: #d8dfdc;
+    --theme-text-muted: #c1cbca;
+    --theme-focus-ring: #ffffff;
+  }
 }

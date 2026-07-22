@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: de1163e87651f0886b156916c36b85f8b7f4fed57aacf75805726b534cff422a
-source_files: 380
+source_hash: ac37eae6938a6b81a81e8fa14e260aa990906aee779c45ee1410260ed193608e
+source_files: 382
 mapped_at_commit: working-tree
 ---
 
@@ -600,6 +600,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C008.md`: Durable implementation evidence for exact project, media,
   timeline, inspector, mixer, graph, scopes, jobs, and dialog screen-reader guidance, real consumer
   relationships, typed graph-state preservation, and unchanged lower ownership.
+- `docs/checkpoints/P3.W07.C009.md`: Durable implementation evidence for scalable type, browser
+  zoom, stronger contrast, universal focus, reduced motion, color-independent status geometry, and
+  preserved fixed viewer color-data meaning.
 
 ### Production desktop application
 
@@ -1290,6 +1293,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/screen-reader-support.test.ts`: Proves exact nine-surface order, unique identities,
   complete labels and descriptions, edit and modal classifications, deep freezing, typed graph
   action guidance, and fail-closed unknown lookup.
+- `app/tests/visual-accessibility.test.ts`: Proves bounded scalable root typography, inherited
+  controls, universal focus geometry, more-contrast chrome, reduced animation, text-plus-shape
+  status, and unchanged fixed viewer color-data tokens.
 - `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
   duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
   re-arming, cleanup, and accessible scale formatting.

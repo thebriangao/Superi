@@ -90,6 +90,11 @@ The application renders each description once in the accessibility tree, each re
 references its exact identity, and existing keyboard, live-region, progress, modal, project, and
 typed graph owners remain unchanged.
 
+Application chrome now scales root typography with browser zoom, inherits control text, strengthens
+focus geometry, responds to increased contrast, suppresses nonessential motion, and combines status
+text with distinct shapes and border patterns. Fixed viewer, overlay, comparison, marker, scene,
+transform, and display color-data contracts remain outside adaptive chrome.
+
 One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
 project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
 route exposes that exact identity and every invariant while capability availability, physical

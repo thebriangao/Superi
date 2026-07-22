@@ -20,6 +20,27 @@ body,
   margin: 0;
 }
 
+html {
+  font-size: clamp(
+    var(--theme-font-size-min),
+    calc(12px + 0.5vw),
+    var(--theme-font-size-max)
+  );
+  text-size-adjust: 100%;
+}
+
+body {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
 body {
   overflow: hidden;
 }
@@ -50,8 +71,23 @@ button:disabled {
 
 button:focus-visible,
 .workspace-panel:focus-visible {
-  outline: 2px solid var(--theme-focus-ring);
-  outline-offset: 2px;
+  outline: var(--theme-focus-width) solid var(--theme-focus-ring);
+  outline-offset: var(--theme-focus-offset);
+}
+
+:where(
+  a[href],
+  area[href],
+  button,
+  input,
+  select,
+  textarea,
+  summary,
+  [contenteditable="true"],
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  outline: var(--theme-focus-width) solid var(--theme-focus-ring);
+  outline-offset: var(--theme-focus-offset);
 }
 
 .application-shell {
@@ -60,6 +96,43 @@ button:focus-visible,
   width: 100%;
   height: 100%;
   background: var(--theme-canvas);
+}
+
+.application-feedback-status::before {
+  display: grid;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  content: "i";
+  font-weight: 800;
+}
+
+.application-feedback-status[data-status-condition="attention"]::before {
+  border-radius: 4px;
+  content: "!";
+}
+
+.application-feedback-status[data-status-condition="degraded"]::before {
+  border-style: dashed;
+  content: "~";
+}
+
+.application-feedback-status[data-status-condition="progress"]::before {
+  content: ">";
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .skip-navigation-link {

@@ -284,6 +284,19 @@ test("screen-reader guidance is connected to every required professional surface
   assert.match(packageJson.scripts.test, /screen-reader-support\.test\.ts/);
 });
 
+test("visual accessibility scales, focuses, reduces motion, and preserves scene color", () => {
+  const styles = read(resolve(appRoot, "src/styles.css"));
+  const theme = read(resolve(appRoot, "src/theme.css"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+  assert.match(styles, /font-size:\s*clamp\(/);
+  assert.match(styles, /:focus-visible/);
+  assert.match(styles, /prefers-reduced-motion: reduce/);
+  assert.match(theme, /prefers-contrast: more/);
+  assert.match(styles, /data-status-condition="attention"/);
+  assert.match(packageJson.scripts.test, /visual-accessibility\.test\.ts/);
+  assert.match(theme, /--viewer-surround:\s*#030405/);
+});
+
 test("panel workspace exposes real dock, tab, resize, hide, and continuity behavior", () => {
   const application = read(resolve(appRoot, "src/application.ts"));
   const panelWorkspace = read(resolve(appRoot, "src/panel-workspace.tsx"));
