@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Interface Design"
+  short_description: "Apply Superi locked interface design decisions"
+  default_prompt: "Use $superi-interface-design to design or review a Superi interface while preserving every locked visual decision."

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 714a5340d952d8c07cb631ac5d882e461ad0d9019eec546140b06bac017e8a71
-source_files: 260
+source_hash: e55604ec663b3e946e5cc4739c44aa20bc71603052ef5c3332845274e93af31c
+source_files: 262
 mapped_at_commit: working-tree
 ---
 
@@ -11,7 +11,8 @@ mapped_at_commit: working-tree
 
 The `workspace` module owns repository law, product and architecture documents, CI policy, Cargo
 workspace resolution, generated and preserved TypeScript contracts, brand assets, fixtures, and the
-repository-owned checkpoint operating system. Runtime crates and Rust tools have separate maps.
+repository-owned checkpoint operating system. It also owns the locked Superi interface design
+authority consumed by every native UI workflow. Runtime crates and Rust tools have separate maps.
 
 Phase Infinity replaces the retired React, Tauri, Vite, and webview presentation with a retained
 native wgpu path. Historical checkpoint documents remain tracked evidence for the revisions that
@@ -29,10 +30,15 @@ documentation, or contract source.
   including generated binding and both preserved TypeScript contract lanes.
 - `.agents/skills/superi-human-acceptance/SKILL.md`: Human visual acceptance instructions.
 - `.agents/skills/superi-human-acceptance/agents/openai.yaml`: Human acceptance skill metadata.
-- `.agents/skills/superi-icon-system/SKILL.md`: Original icon-system instructions.
+- `.agents/skills/superi-icon-system/SKILL.md`: GPT Image concept, rejection, cleanup, vectorization,
+  normalization, color-state, registry, and atlas workflow for original icons.
 - `.agents/skills/superi-icon-system/agents/openai.yaml`: Icon skill metadata.
 - `.agents/skills/superi-integration/SKILL.md`: Integration instructions.
 - `.agents/skills/superi-integration/agents/openai.yaml`: Integration skill metadata.
+- `.agents/skills/superi-interface-design/SKILL.md`: Locked interface appearance, typography,
+  color, spacing, material, motion, icon, shell, workspace, panel, and accessibility decisions.
+- `.agents/skills/superi-interface-design/agents/openai.yaml`: Locked interface design skill
+  metadata.
 - `.agents/skills/superi-mapping/SKILL.md`: Codebase mapping instructions.
 - `.agents/skills/superi-mapping/agents/openai.yaml`: Mapping skill metadata.
 - `.agents/skills/superi-mapping/scripts/codebase_maps.py`: Module discovery and map validator.
@@ -42,7 +48,8 @@ documentation, or contract source.
 - `.agents/skills/superi-testing/agents/openai.yaml`: Testing skill metadata.
 - `.agents/skills/superi-visual-capture/SKILL.md`: Private retained UI capture instructions.
 - `.agents/skills/superi-visual-capture/agents/openai.yaml`: Visual capture skill metadata.
-- `.agents/skills/superi-visual-design/SKILL.md`: Visual design instructions.
+- `.agents/skills/superi-visual-design/SKILL.md`: Research, composition, inspection, and iteration
+  workflow that defers appearance and shell authority to the locked interface design skill.
 - `.agents/skills/superi-visual-design/agents/openai.yaml`: Visual design skill metadata.
 - `.agents/skills/superi-wgpu-construction/SKILL.md`: Native wgpu construction instructions.
 - `.agents/skills/superi-wgpu-construction/agents/openai.yaml`: Wgpu construction skill metadata.
@@ -308,9 +315,10 @@ under ignored `plans/` and never enter commits.
 ## Dependencies and consumers
 
 Every crate and tool consumes workspace dependency pins and policy. GitHub Actions consume the
-workflow scripts, fixtures, and manifests. Native UI checkpoints consume the repository-owned skill
-sequence. The TypeScript lanes consume only the committed generated API and preserved editorial
-contracts, with no production JavaScript runtime.
+workflow scripts, fixtures, and manifests. Native UI checkpoints consume the locked interface
+design authority before the repository-owned visual, icon, construction, capture, testing,
+integration, and acceptance workflows. The TypeScript lanes consume only the committed generated
+API and preserved editorial contracts, with no production JavaScript runtime.
 
 ## Invariants and operational boundaries
 
@@ -322,6 +330,8 @@ contracts, with no production JavaScript runtime.
 - Plans, captures, claims, and human-acceptance state are local working artifacts.
 - Source-changing checkpoints update every affected map and pass the global validator.
 - TypeScript packages remain contract consumers rather than a second application owner.
+- Locked UI decisions live in `superi-interface-design`; visual and icon workflow skills must defer
+  to that authority rather than duplicate or revise it.
 
 ## Tests and verification
 
@@ -334,13 +344,14 @@ commands.
 ## Current status and risks
 
 The Phase Infinity foundation is present: native retained UI, portable session services, private
-capture, revised skills, preserved contracts, and retired presentation removal. The UI is a
-foundation rather than the finished editor. Historical documents still name the retired stack by
-design, so current architecture readers must begin with this map and the live source.
+capture, revised skills, preserved contracts, retired presentation removal, and a repository-owned
+locked interface design authority. The UI is a foundation rather than the finished editor.
+Historical documents still name the retired stack by design, so current architecture readers must
+begin with this map and the live source.
 
 ## Maintenance notes
 
 Regenerate the exact inventory whenever any non-crate or non-tool repository file changes. Update
 architecture, workflow, skill, contract, fixture, and asset descriptions with the same change.
-The C001 final refresh rechecked all 260 entries after skill formatting cleanup and found no
-inventory, ownership, relationship, or behavior change. Never refresh only the hash or file count.
+This interface-design refresh reconciled all 262 entries, the new locked authority, and the changed
+visual and icon workflow relationships. Never refresh only the hash or file count.

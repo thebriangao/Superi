@@ -7,6 +7,8 @@ description: Render, control, semantically inspect, crop, compare, and review Su
 
 ## Required path
 
+Read `../superi-interface-design/SKILL.md` before judging any interface capture.
+
 Use `tools/superi-capture`, which invokes the Rust `superi-ui-inspect` tool. It must use the same
 retained scene, layout, text, icon, input, semantics, and wgpu renderer as `superi-desktop`.
 
@@ -66,7 +68,7 @@ Use `--help` for the current exact arguments. Never invent an unsupported flag.
 Review:
 
 - information hierarchy
-- pure-black plane and meaningful depth
+- near-black back plane, opaque layered surfaces, and selective glass
 - aligned seams and baselines
 - compact text clarity
 - icon silhouette and optical alignment

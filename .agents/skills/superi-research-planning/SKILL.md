@@ -48,7 +48,8 @@ For a Phase Infinity surface:
 
 1. Identify the user task, canonical state owner, automation route, selection domain, focus behavior,
    failure states, accessibility semantics, and consumer proof.
-2. Inspect relevant current interface captures and adjacent Obsidian Signal surfaces.
+2. Read `../superi-interface-design/SKILL.md`, then inspect relevant current interface captures and
+   adjacent surfaces against its locked decisions.
 3. Brainstorm at least three original directions when interaction or visual judgment is material.
 4. Compare directions against task speed, hierarchy, density, accessibility, consistency, rendering
    cost, and canonical ownership.

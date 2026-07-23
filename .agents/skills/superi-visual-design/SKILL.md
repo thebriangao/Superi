@@ -1,15 +1,15 @@
 ---
 name: superi-visual-design
-description: Design original Obsidian Signal interfaces from task evidence, accessibility, and private rendered inspection.
+description: Research, compose, inspect, and iterate original Superi interface surfaces while applying the separate locked interface design authority.
 ---
 
 # Superi Visual Design
 
-## Design law
+## Required design authority
 
-Superi is a pure-black media-first working environment. Structure comes from continuous seams,
-compact typography, sparse semantic color, a narrow signal rail, original icons, and precise state.
-Avoid card stacks, ornamental dashboards, copied editor skins, and decorative motion.
+Read `../superi-interface-design/SKILL.md` completely before using this workflow. That skill owns
+Superi's locked appearance and shell decisions. This skill owns research, composition, inspection,
+and iteration procedure only. Never restate, override, or reopen the locked decisions.
 
 ## Before drawing
 
@@ -40,18 +40,13 @@ Selection and focus must be visually distinct. No required state may rely on col
 targets must provide 24 by 24 logical hit area or equivalent spacing. Visible focus must meet a
 strong 2 px perimeter-equivalent area and at least 3:1 change contrast.
 
-## Obsidian Signal checks
+## Locked-system checks
 
-- true black is the application plane
-- near-black depth is reserved for meaningful elevation
-- seams align across panel boundaries
-- the signal rail marks active context or signal health
-- primary media, timelines, graphs, scopes, and waveforms remain visually dominant
-- typography stays sharp and compact
-- semantic color is sparse and consistent
-- empty states offer the next action and useful shortcut
-- failures name impact, preserved work, and recovery
-- motion explains continuity and never delays repeated work
+- Apply every relevant rule in `superi-interface-design`.
+- Keep primary media, timelines, graphs, scopes, and waveforms visually dominant.
+- Make empty states offer the next action and useful shortcut.
+- Make failures name impact, preserved work, and recovery.
+- Keep motion explanatory and repeated work immediate.
 
 ## Iteration
 

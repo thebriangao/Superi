@@ -1,9 +1,14 @@
 ---
 name: superi-icon-system
-description: Reuse, design, normalize, inspect, version, and register original Superi interface icons.
+description: Reuse or produce original Superi icons through the locked GPT Image concept, visual rejection, cleanup, vectorization, normalization, state, registry, and atlas workflow.
 ---
 
 # Superi Icon System
+
+## Required design authority
+
+Read `../superi-interface-design/SKILL.md` completely before working with icons. Its icon appearance,
+color, and state decisions are locked. This skill supplies the production and registry workflow.
 
 ## Registry first
 
@@ -18,20 +23,33 @@ Before adding artwork:
 
 When no semantic match exists:
 
-1. Write the action or object meaning without naming a familiar third-party glyph.
-2. Sketch at least two original concepts.
-3. Reject concepts that resemble researched product artwork or depend on tiny decoration.
-4. Normalize the chosen concept to the 24 by 24 logical view box.
-5. Apply the current line weight, cap, join, corner, gap, and optical-correction vocabulary.
-6. Keep the silhouette distinct from adjacent registry entries.
-7. Render light-on-dark, dark-on-light, selected, disabled, compact, default, and high-DPI proofs.
-8. Inspect full pixels and useful crops.
-9. Revise or reject failures.
-10. Assign a lowercase dotted name, semantic description, category, version, source geometry, and
-    review status.
-11. Register and atlas-pack the asset.
+1. Define the exact action, object, state, or category meaning without naming a familiar
+   third-party glyph.
+2. Declare whether and why the icon uses color in default, hover, active, clicked, toggled,
+   category, or status states.
+3. Generate exactly two original starting concepts with GPT Image 2 on a black background. Use a
+   white icon unless the declared color contract requires color.
+4. Inspect both concepts visually at useful crops and actual interface sizes.
+5. Reject concepts that are weak, derivative, ambiguous, blob-like, generic, or dependent on
+   invisible small decoration.
+6. Generate exactly one revised concept after each rejection.
+7. Repeat inspection and revision until the silhouette is excellent.
+8. Remove the black background and background-transition pixels while preserving intentional
+   shading and color.
+9. Vectorize the accepted raster without replacing it with manually invented vector geometry.
+10. Normalize it to the 24 by 24 logical view box.
+11. Apply the current line, corner, gap, shading, and optical-correction vocabulary at actual
+    interface sizes.
+12. Keep the silhouette distinct from adjacent registry entries.
+13. Render every declared grayscale and color state against Superi's black interface, including
+    selected, disabled, compact, default, and high-DPI proofs.
+14. Inspect full pixels and useful crops, then reject or revise failures.
+15. Assign a lowercase dotted name, semantic description, category, color contract, version,
+    accepted vector source, and review status.
+16. Register, hash, atlas-pack, and integrate the asset.
 
 Do not copy, trace, recolor, or mechanically modify third-party icons.
+Do not manually construct a new icon from invented vector geometry.
 
 ## Technical contract
 
@@ -43,10 +61,12 @@ Every registry item provides:
 - logical bounds and optical inset
 - fill or stroke behavior
 - category
+- grayscale and color-state contract
 - atlas identity
 - deterministic render hash
 - screenshot proof
 - duplicate and collision review
+- semantic brief and accepted generation lineage
 
 Icon identity must not depend on atlas position. A missing icon fails with an explicit diagnostic and
 never silently renders a different meaning.
@@ -60,5 +80,6 @@ non-color feedback.
 ## Exit gate
 
 Run registry validation, atlas determinism, duplicate detection, visual capture, and semantic-control
-tests. Record accepted and rejected concepts in `planning.md`, and record final hashes and captures
-in `execution.md`.
+tests. Confirm that at least 10 percent of the complete registry has a meaningful colored version,
+without treating 10 percent as a target or cap. Record accepted and rejected concepts in
+`planning.md`, and record final hashes and captures in `execution.md`.
