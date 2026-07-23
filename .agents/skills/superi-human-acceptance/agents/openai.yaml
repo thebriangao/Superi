@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Human Acceptance"
+  short_description: "Run the exact visual judgment gate"
+  default_prompt: "Use $superi-human-acceptance to present final screenshots and run the exact Yes or No gate."

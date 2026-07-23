@@ -4,13 +4,12 @@
 engine. Superi Max is an optional generation and agent layer constructed across a hard architectural
 boundary.**
 
-> **Project status:** Superi is in early implementation. Several lower-level media, codec, image,
-> GPU, color, concurrency, and policy contracts are substantive, and the canonical CLI runner now
-> executes a disclosed contract-conformance slice. A production React and Tauri shell now owns an
-> explicit headless-engine lifecycle, one linked EngineControl dispatcher, a reliable generated API
-> transport, and five registry-backed professional workspaces over one public project snapshot.
-> The current native bridge still does not route broad editor methods, and Superi does not claim
-> runtime import, rendering, audio processing, or playable export.
+> **Project status:** Superi is in active implementation. The open workspace contains substantive
+> media, codec, image, GPU, color, concurrency, project, timeline, API, and policy contracts. A
+> custom retained Rust interface now renders through the same wgpu ownership used by the engine,
+> runs in a thin native desktop host, publishes native accessibility semantics, and supports
+> deterministic private capture. This foundation does not yet claim a complete professional
+> editor, runtime import-to-export integration, or production-ready playback.
 
 Superi begins from a simple observation: professional post-production software has historically
 separated editing, compositing, color, and audio into different applications, different internal
@@ -188,7 +187,7 @@ depend upward on every capability Superi may someday acquire.
 
 ```mermaid
 flowchart TB
-    UI["Desktop React application"]
+    UI["Native retained desktop interface"]
     Scripts["Scripts and extensions"]
     CLI["Headless CLI"]
     Max["Superi Max agent"]
@@ -305,36 +304,25 @@ and failure-prone work in the project.
 
 ## The application boundary
 
-The graphical application uses React in a Tauri 2 native desktop host and communicates with the Rust
-engine through the public automation API. The current shell owns explicit startup, shutdown,
-restart, recovery, and failure state around one lifecycle-attached EngineControl dispatcher. Its
-React bootstrap consumes the complete generated TypeScript contract through an injected
-`SuperiTransport` provider. One concrete desktop transport owns ordered delivery, replay,
-reconnection, cancellation, and public failures. Above it, one application provider owns transient
-routing, immutable route-local dock and tab layouts, panel visibility, commands, shared resource
-selection, and the last public editor snapshot presented across editing, compositing, color, audio,
-and delivery workspaces. Panel placement, tab order, active tabs, bounded dock sizes, visibility,
-and focus are reconciled against the live registry and retained through private desktop and crash
-continuity records without entering project transactions or document identity. The workspace header
-reports whether those saved layouts are default or custom, can reset every route to registry
-defaults, and retains one exact transient undo until later layout intent supersedes it. The same
-header projects the authoritative native engine lifecycle continuously and routes detailed control
-or recovery to the existing System workspace rather than becoming another engine owner. This direction gives
-Superi
-access to a mature interface ecosystem and a large design and engineering talent pool while keeping
-the performance-critical media pipeline native and GPU-driven.
+The graphical application is native Rust. `superi-ui` owns one immutable retained scene whose stable
+node identities drive drawing, hit testing, focus traversal, interaction, semantic inspection, and
+the AccessKit tree. It shapes and rasterizes the bundled Inter face, draws Superi's original icon
+geometry, and composites the resulting frame through wgpu and the existing sole GPU submission
+owner. `superi-desktop` is a thin winit window and input host. `superi-session` owns portable
+lifecycle, project, media, crash, capability, transport, and legacy-state migration behavior outside
+the presentation layer.
+
+The same scene can render to a native surface or the private headless inspection controller.
+Inspection can address controls by stable node identity, replay pointer and keyboard input, and emit
+the exact PNG, semantic tree, transcript, state, manifest, and artifact hashes used for review.
+Private capture never creates a second product renderer.
 
 The UI is responsible for presenting timelines, panels, inspectors, node graphs, scopes, meters,
 project organization, and interaction. It is not responsible for secretly reimplementing editing
 semantics, graph mutation, color math, persistence, or render logic. A ripple edit initiated by a
-pointer gesture and the same ripple edit initiated by a script must ultimately become the same engine
-command.
-
-A custom GPU-rendered UI remains possible in a distant future because the engine already speaks
-wgpu, but building a complete UI framework, including layout, typography, accessibility, internationalization,
-text input, docking, and widget behavior, is deliberately outside the present destination. Web
-technology is the current primary direction; engine process and transport details remain subject to
-validation by the founding engineering team.
+pointer gesture and the same ripple edit initiated by a script must ultimately become the same
+revision-fenced engine command through `superi-api`. The generated TypeScript binding remains a
+public external-client contract, not the application implementation.
 
 ---
 
@@ -363,7 +351,7 @@ See [`docs/codecs.md`](docs/codecs.md) for the current policy and format matrix.
 
 ## The current implementation
 
-The `open/` directory is a Cargo workspace containing nineteen runtime crates and six repository
+The `open/` directory is a Cargo workspace containing twenty-two runtime crates and seven repository
 tools. The workspace is intentionally organized as one crate per major responsibility, with
 dependencies pointing downward through an acyclic hierarchy. The crate graph is meant to make
 architectural violations visible to the Rust compiler rather than leaving them entirely to
@@ -385,9 +373,9 @@ answers:
 - Where will integration occur?
 - Which surfaces must remain public and stable?
 
-It does not yet answer how decoding, graph evaluation, color transformation, playback, persistence,
-or editing will actually be implemented, although the desktop lifecycle, linked process, and
-generated client boundaries are now concrete.
+It does not yet answer every production decode, graph evaluation, color delivery, playback, or
+export question. The native retained scene, desktop window, portable session boundary, public API
+client contract, and deterministic inspection path are concrete.
 
 ### Crate hierarchy
 
@@ -411,7 +399,10 @@ generated client boundaries are now concrete.
 | T4 | `superi-project` | Project document, whole-state persistence, autosave, and crash recovery. |
 | T4 | `superi-engine` | Playback and export orchestration, transactions, lifecycle, errors, resources, built-in nodes, queues, introspection, validation, and plug-ins. |
 | T5 | `superi-api` | Stable public commands, events, scripting, versioning, generated TypeScript bindings, and the unified automation surface. |
+| T5 | `superi-ui` | Retained scene, typography, icons, input, focus, semantics, deterministic paint, wgpu composition, and inspection capture. |
+| T6 | `superi-session` | Portable application, project, media, lifecycle, capability, crash, transport, and legacy-state migration services. |
 | T6 | `superi-cli` | First headless API consumer and eventual vertical-slice harness. |
+| T7 | `superi-desktop` | Thin native winit host for the retained scene, portable session, and wgpu surface. |
 
 The defining dependency rule is that lower tiers do not learn about the capabilities assembled above
 them. In particular, `superi-graph` never depends on `superi-color` or `superi-effects`; node
@@ -430,9 +421,8 @@ superi/
 │   ├── north-star.md         Product destination and two-tier definition
 │   ├── phases.md             Build sequence and subsystem inventory
 │   └── codecs.md             Codec policy and format matrix
-├── app/                      Production React and Tauri desktop shell
-│   ├── src/                  Lifecycle UI and generated public API client seam
-│   └── src-tauri/            Native lifecycle and EngineControl owners
+├── ci/
+│   └── api-client-contract/  Strict transport-neutral TypeScript consumer
 ├── open/
 │   ├── Cargo.toml            Runtime crate and repository tool workspace definition
 │   ├── Cargo.lock            Generated internal dependency graph
@@ -440,18 +430,20 @@ superi/
 │   ├── rust-toolchain.toml   Stable Rust, rustfmt, and Clippy
 │   ├── rustfmt.toml          Formatting policy
 │   ├── docs/STRUCTURE.md     Compact crate topology and ownership map
-│   ├── bindings/typescript/  Generated desktop-facing public API contract
-│   ├── crates/               Open engine packages
-│   └── tools/                Repository generation and verification utilities
+│   ├── assets/brand/         Retained editable and packaged application marks
+│   ├── bindings/typescript/  Generated API and preserved editorial contracts
+│   ├── crates/               Open engine, UI, session, and desktop packages
+│   └── tools/                Generation, inspection, and verification utilities
+├── tools/
+│   └── superi-capture        Private native interface controller
 └── closed/
     └── README.md             Superi Max boundary notice
 ```
 
 The `closed/` directory contains a boundary notice only. No Superi Max implementation is present.
-The `/app` shell now owns lifecycle, the linked EngineControl process, one generated binding and
-transport, one application/project presentation owner, and five professional workspace views.
-Broad editor method routing remains intentionally unavailable and is presented as a classified
-degraded state rather than represented by mocked success.
+The open native interface foundation is exercised by the real desktop surface and the private
+headless GPU capture path. Later Phase Infinity checkpoints expand that foundation into the complete
+editor without changing the engine's public ownership boundaries.
 
 ---
 
@@ -465,6 +457,13 @@ cd open
 cargo build --workspace
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+cargo run -p superi-desktop
+```
+
+Capture the current retained interface without taking over the desktop:
+
+```bash
+tools/superi-capture render --output /tmp/superi-interface
 ```
 
 Run the canonical contract-conformance slice from the repository root or `open/` directory:

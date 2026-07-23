@@ -4,9 +4,10 @@ The free, forkable, offline-complete professional editor. This cargo workspace i
 headless, scriptable, and fully functional with the network
 unplugged.
 
-> **Status: early implementation.** Lower-level runtime contracts and CI rails are substantive, and
-> the canonical CLI slice now executes at disclosed contract conformance. Production media import,
-> graph evaluation, color delivery, muxing, and the UI remain incomplete.
+> **Status: active implementation.** Lower-level runtime contracts and CI rails are substantive, the
+> canonical CLI slice executes at disclosed contract conformance, and the native retained interface
+> foundation presents through wgpu with deterministic private capture. Production media import,
+> graph evaluation, color delivery, muxing, playback, and the complete editor remain incomplete.
 
 ## Build
 
@@ -15,6 +16,7 @@ cd open
 cargo build
 cargo run -p superi-cli -- --help
 cargo run -p superi-api-bindings -- check
+cargo run -p superi-desktop
 ```
 
 Run the fixed canonical slice from `open/` with absent output paths:
@@ -39,7 +41,7 @@ cargo build -p superi-cli --features os-codecs
 
 ## Layout
 
-Nineteen runtime crates in `crates/` and six repository tools in `tools/` are wired in strict
+Twenty-two runtime crates in `crates/` and seven repository tools in `tools/` are wired in strict
 downward-only dependency tiers so the architecture is compiler-enforced. Full module maps,
 dependency DAG, ownership, and workspace guidance are in **`../docs/codebase-map/`** and
 **`docs/STRUCTURE.md`**.
@@ -47,6 +49,12 @@ dependency DAG, ownership, and workspace guidance are in **`../docs/codebase-map
 The canonical public API registry also drives the committed desktop-facing TypeScript artifact at
 `bindings/typescript/superi-api.ts`. Regenerate it with `superi-api-bindings generate`; use the
 nonmutating `check` command in verification.
+
+`superi-ui` owns the retained scene, Inter typography, original icon geometry, input, focus,
+AccessKit semantics, deterministic paint, and shared wgpu compositor. `superi-session` owns portable
+application and legacy-state behavior. `superi-desktop` is the thin native host, while
+`superi-ui-inspect` and `../tools/superi-capture` control the same scene offscreen for private visual
+evidence.
 
 The supported local `superi-json` runtime accepts bounded `.superi-script.json` source through
 `superi.project.script.run`. It executes the existing generic project command and complete editor

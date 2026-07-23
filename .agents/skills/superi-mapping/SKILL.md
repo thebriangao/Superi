@@ -1,119 +1,56 @@
 ---
 name: superi-mapping
-description: Use to create, validate, or refresh Superi's comprehensive codebase maps before planning or after source changes.
+description: Validate, read, reconcile, and refresh Superi codebase maps before planning and after implementation.
 ---
 
 # Superi Mapping
 
 ## Purpose
 
-Maintain `docs/codebase-map/` as a current, comprehensive navigation layer over the repository. A
-map accelerates orientation, but never replaces reading the raw files that a worker will change or
-the interfaces and tests needed to prove the change.
+Use repository maps as an orientation and maintenance contract, never as a substitute for source.
+The checkpoint owner performs all mapping inline.
 
-## Mapping contract
+## Before planning
 
-Every discovered repository module owns one map at `docs/codebase-map/modules/<module-id>.md`. The
-mapping script defines module membership, source hashes, complete file inventories, and required map
-sections. Run it from the repository root:
+1. Run:
 
-```text
-python3 .agents/skills/superi-mapping/scripts/codebase_maps.py inventory
-python3 .agents/skills/superi-mapping/scripts/codebase_maps.py files <module-id>
-python3 .agents/skills/superi-mapping/scripts/codebase_maps.py shards <module-id> --max-lines 4000
-python3 .agents/skills/superi-mapping/scripts/codebase_maps.py validate
-```
+   `python3 .agents/skills/superi-mapping/scripts/codebase_maps.py validate`
 
-The `workspace` module owns repository files outside `open/crates/*` and `open/tools/*`. Generated
-output, dependency caches, ignored files, plan files, and the generated map tree are excluded.
-Tracked binary artifacts remain in the inventory, but their bytes are not treated as readable prose.
+2. Read `docs/codebase-map/index.md` from first line through EOF.
+3. Identify every affected module, caller, consumer, public contract, runtime path, test surface, and
+   governing document.
+4. Read every corresponding module map in full.
+5. Compare map claims with manifests and raw source. Record every stale, incomplete, or missing map
+   in `planning.md`.
+6. If a map is stale, use source as authority and include map repair in the checkpoint.
 
-For ordinary checkpoint work, the checkpoint owner performs initial map validation and reads the
-global index plus the complete affected caller, consumer, contract, and runtime-path map closure
-inline. Record stale or missing maps and replace their authority with deeper raw-code evidence. After
-implementation, refresh every affected map and validate the complete map set in the same task.
+Search is for discovery only. A search result does not count as reading a map or source file.
 
-## Create all maps
+## During implementation
 
-This workflow applies only when the user explicitly assigns a full-map creation or rebuild outside a
-normal checkpoint. The current agent performs it sequentially and may not create reader, writer,
-synthesizer, or reviewer agents:
+- Track every source, manifest, schema, fixture, and ownership change.
+- Update a module map when its inventory, public surface, behavior, flow, dependency, invariant,
+  test, status, risk, or maintenance note changes.
+- Update every consumer map made inaccurate by the change.
+- Update the global index when ownership, layering, public flow, dependency direction, runtime
+  relationship, module status, or product boundary changes.
+- Never update only a hash or count.
+- Preserve preexisting map edits and reconcile them line by line.
 
-1. Synchronize the repository safely, run `inventory`, and establish one ordered module list.
-2. Partition large modules with `shards`. A shard contains whole files only and may exceed the line
-   target when one file is larger than the target.
-3. Read every assigned text file from its first line through EOF. Reading in chunks is allowed only
-   when every chunk is consumed. Search may locate symbols, but search output is never a substitute
-   for the full read.
-4. Maintain a structured local note at
-   `plans/codebase-mapping/<module-id>/shards/<shard-id>.md` for each shard. Cover every assigned file,
-   public and internal surfaces, data flow, dependencies, consumers, invariants, tests, incomplete
-   behavior, risks, and relationships that another module map must mention.
-5. Read every shard note in full, then read all module manifests, public entry points, and
-   cross-module interfaces needed to reconcile the evidence. Write the final module map with the
-   exact hash and file count reported by the mapping script.
-6. After every module exists, synthesize `docs/codebase-map/index.md` from all maps. Explain global
-   layering, dependency direction, major runtime flows, shared invariants, and where each concern is
-   owned.
-7. Run `validate`, repair every failure, inspect the complete map diff, and rerun validation.
+## Refresh
 
-## Module map format
+Use the repository script for mechanical counts and hashes, then review the complete generated diff.
+Do not accept a generated map until its prose matches the resulting source.
 
-Each module map starts with this metadata, using values from the script:
+Run the validator:
 
-```text
----
-module_id: <module-id>
-source_paths:
-  - <owned-path>
-source_hash: <sha256>
-source_files: <count>
-mapped_at_commit: <git-revision>
----
-```
+1. before planning
+2. after each map refresh
+3. after final integration or rebase
+4. immediately before push
 
-It then contains all of these sections exactly once:
+## Proof
 
-```text
-## Purpose and ownership
-## Source inventory
-## Public surface
-## Architecture and data flow
-## Dependencies and consumers
-## Invariants and operational boundaries
-## Tests and verification
-## Current status and risks
-## Maintenance notes
-```
-
-`Source inventory` lists every owned path in backticks and explains its concrete role. The rest of
-the map describes implemented reality, not intended future architecture. Clearly label placeholders,
-unfinished paths, inferred relationships, and behavior that is defined only by tests or docs.
-
-## Refresh maps after a change
-
-Map maintenance is part of implementation, not a later documentation task:
-
-1. During planning, the checkpoint owner runs `validate`, reads the required map closure, and records
-   missing or stale maps. Use deeper raw-code evidence whenever map authority is unavailable.
-2. Before editing source, read both plans and every raw file selected for
-   modification, along with its relevant callers, consumers, public interfaces, tests, schemas, and
-   governing documents, in full.
-3. After editing and testing, run `changed --base <revision>` to identify directly affected modules.
-4. For each affected module, read its existing map, every changed file, and every related interface
-   or test in full. Update the source inventory and all architectural statements affected by the
-   change, including removals, renames, new consumers, changed invariants, and new proof.
-5. Recompute the module hash and file count after all source edits. Update `mapped_at_commit` to the
-   revision the work is based on, or `working-tree` when source edits are not committed yet.
-6. Update maps for other modules when their consumer relationship or contract changed even if their
-   own source hash did not. Update the global index whenever ownership, layering, public flow, or
-   module status changed.
-7. After the final rebase and before delivery, rerun `validate`. If a map conflicts during rebase,
-   regenerate it from the rebased source and reconciled behavior instead of choosing one side.
-
-No source-changing commit is complete while an affected map is stale. Do not update only the hash;
-the prose and inventory must truthfully describe the resulting code.
-
-Perform map reading, writing, reconciliation, and validation inline. Review the final map diff,
-reconcile cross-module statements, and run the final validator after integration. Never spawn a map
-reader, writer, synthesizer, or reviewer.
+Record the exact validator command and result in `execution.md`. Completion requires every changed
+source path to be represented by a current module map, every affected relationship to be current in
+the global index, and zero validator errors.

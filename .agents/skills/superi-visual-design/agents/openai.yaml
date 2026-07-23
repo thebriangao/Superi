@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Visual Design"
+  short_description: "Design original native interface surfaces"
+  default_prompt: "Use $superi-visual-design to create and inspect an original Obsidian Signal surface."

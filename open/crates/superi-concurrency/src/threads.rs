@@ -34,7 +34,7 @@ std::thread_local! {
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
 pub enum ExecutionDomain {
-    /// Operating-system main thread for Tauri, windows, input, and viewport geometry.
+    /// Operating-system main thread for windows, retained input, and viewport geometry.
     Ui,
     /// Single serialized owner of authoritative mutable engine and project state.
     EngineControl,

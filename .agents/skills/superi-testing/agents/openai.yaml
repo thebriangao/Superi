@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Testing"
+  short_description: "Verify complete checkpoint behavior"
+  default_prompt: "Use $superi-testing to prove the checkpoint through widening real-consumer tests."

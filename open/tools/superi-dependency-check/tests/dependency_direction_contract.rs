@@ -32,7 +32,7 @@ fn current_workspace_obeys_the_documented_direction() {
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let report = check_workspace(&workspace).expect("the checked-in workspace must obey the DAG");
 
-    assert!(report.checked_packages >= 19);
+    assert!(report.checked_packages >= 22);
     assert!(report.checked_internal_edges >= 1);
 }
 
@@ -110,6 +110,39 @@ fn reviewed_project_audio_edge_preserves_downward_direction() {
     validate_metadata(&project_to_audio).expect("project may persist authored audio state");
     let error = validate_metadata(&audio_to_project).expect_err("audio must not depend on project");
     assert!(error.to_string().contains("superi-audio -> superi-project"));
+}
+
+#[test]
+fn native_presentation_tiers_preserve_session_and_engine_ownership() {
+    let reviewed = metadata(vec![
+        package(
+            "superi-desktop",
+            vec![
+                dependency("superi-gpu", None),
+                dependency("superi-ui", None),
+                dependency("superi-session", None),
+            ],
+        ),
+        package("superi-ui", vec![dependency("superi-gpu", None)]),
+        package(
+            "superi-session",
+            vec![
+                dependency("superi-api", None),
+                dependency("superi-engine", None),
+            ],
+        ),
+        package("superi-gpu", vec![]),
+        package("superi-api", vec![]),
+        package("superi-engine", vec![]),
+    ]);
+    validate_metadata(&reviewed).expect("the reviewed native presentation tiers are valid");
+
+    let upward = metadata(vec![
+        package("superi-ui", vec![dependency("superi-session", None)]),
+        package("superi-session", vec![]),
+    ]);
+    let error = validate_metadata(&upward).expect_err("retained UI must not own session services");
+    assert!(error.to_string().contains("superi-ui -> superi-session"));
 }
 
 #[test]

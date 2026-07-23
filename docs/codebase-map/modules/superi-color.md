@@ -338,13 +338,12 @@ integration contracts, including the canonical repository color fixture, remain 
 algorithm proofs. The fixture contract reads versioned artifacts directly and does not add a
 runtime dependency on the repository fixture generator.
 
-`app/src-tauri/src/viewport.rs` is the production native display consumer. It owns one shared system
-catalog, per-role profile bindings, the current built-in transform selection, and the sole GPU
-submission thread. Each strict placement maps its transient analysis choice to `GpuDisplayView`,
-while the separate color command selects the exact monitor binding and built-in sRGB or Display P3
-intent. `app/src/viewer-color-management.ts` is the strict presentation projection over that state;
-the shell keeps selected and last-presented analysis distinct and keeps both controls independent
-from playback, navigation, overlays, comparison, status, and frame ownership.
+The retired presentation consumer has been removed. `superi-ui` currently paints native application
+chrome but does not yet consume canonical viewer textures or `GpuDisplayPresenter`. A future
+retained viewer must compose the existing system catalog, exact monitor profile binding, analysis
+view, and built-in sRGB or Display P3 intent above the sole managed GPU submission owner. Selected
+and last-presented analysis must remain distinct from playback, navigation, overlays, comparison,
+status, and frame ownership.
 
 `docs/unsafe-ffi.md` consumes the macOS boundary as an audit inventory, and
 `open/crates/superi-color/tests/icc_contract.rs` verifies that this inventory remains present.

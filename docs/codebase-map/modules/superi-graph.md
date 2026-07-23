@@ -817,12 +817,13 @@ atomically with the rest of the project, but no `ProjectMutation` variant direct
   render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
-- The production editing workspace consumes canonical graph documents through the public editor
-  snapshot. Clip presentation starts at real compiled clip nodes, while transition presentation
-  starts at the stable transition object node; both follow outgoing edges through non-timeline nodes
-  until the next timeline-owned node and retain exact driver identity. Transition scalar, Boolean,
-  and choice edits submit typed public `SetParameter` mutations through the application owner
-  without importing graph implementation, evaluation, or catalog policy into React.
+- The preserved editorial TypeScript contracts consume canonical graph documents through the public
+  editor snapshot. Clip presentation starts at real compiled clip nodes, while transition
+  presentation starts at the stable transition object node; both follow outgoing edges through
+  non-timeline nodes until the next timeline-owned node and retain exact driver identity. The
+  retained native UI does not yet expose these controls. Future edits must submit typed public
+  `SetParameter` mutations through the session and engine owners without importing graph
+  implementation, evaluation, or catalog policy into presentation.
 - Project consumes `EditableGraph` and `GraphSnapshot` directly for retained timeline and named
   standalone graph state. It validates project-level identity and revision relationships while all
   node, port, parameter, edge, transaction, and immutable graph semantics remain owned here.

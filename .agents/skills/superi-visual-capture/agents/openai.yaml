@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Visual Capture"
+  short_description: "Privately render and inspect native UI"
+  default_prompt: "Use $superi-visual-capture to render, control, crop, compare, and inspect Superi privately."

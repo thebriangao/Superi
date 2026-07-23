@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Mapping"
+  short_description: "Validate and refresh repository maps"
+  default_prompt: "Use $superi-mapping to orient from current code and maintain every affected map."

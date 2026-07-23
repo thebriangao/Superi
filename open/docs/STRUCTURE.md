@@ -17,6 +17,7 @@ rule, and the codec boundary are enforced by the Rust compiler, not by conventio
 | T1 | `superi-gpu` | core, image |
 | T1 | `superi-concurrency` | core, gpu |
 | T1 | `superi-media-io` | core, image |
+| T2 | `superi-ui` (retained native presentation) | gpu |
 | T1b | `superi-codecs-rs` (default backend) | core, image, media-io |
 | T1b | `superi-codecs-platform` (opt-in, `os-codecs`) | core, image, media-io |
 | T1b | `superi-codecs-vendor` (opt-in host, `vendor-codecs`) | core, image, media-io |
@@ -31,6 +32,8 @@ rule, and the codec boundary are enforced by the Rust compiler, not by conventio
 | T4 | `superi-engine` (orchestration) | all T0-T4 (+ codecs-platform via `os-codecs`, codecs-vendor via `vendor-codecs`) |
 | T5 | `superi-api` (the public seam) | core, engine |
 | T6 | `superi-cli` (first consumer) | core, api |
+| T6 | `superi-session` (portable application services) | core, image, gpu, concurrency, media-io, codecs-rs, color, audio, ai, engine, api |
+| T7 | `superi-desktop` (thin native host) | gpu, ui, session |
 
 **Invariant:** `superi-graph` never depends on `superi-color`/`superi-effects`, node catalogs depend on
 the graph, never the reverse. New capability = new node type, not a new dependency on the engine core.
@@ -52,7 +55,7 @@ encumbered, proprietary, or copyleft ever links into the MIT core.
 | 4 | `superi-color`, `superi-effects` | color / comp |
 | 5 | `superi-timeline`, `superi-project`, `superi-api` | editorial + public surface |
 | 6 | `superi-audio`, `superi-ai` | audio + AI |
-| none | `superi-core`, `superi-engine`, `superi-cli` | shared / lead-stewarded |
+| none | `superi-core`, `superi-engine`, `superi-cli`, `superi-session`, `superi-ui`, `superi-desktop` | shared / lead-stewarded |
 
 ## Working in this workspace
 
@@ -103,6 +106,12 @@ workspace member, its live-workspace contract also runs under the ordinary works
 Project's reviewed runtime edge to audio carries authored clip-mix state and its canonical codec into
 the durable aggregate. It does not carry prepared processors, devices, callbacks, or project policy
 down into `superi-audio`, so the T4-to-T3 dependency direction stays one way.
+
+The native presentation tiers are explicit. `superi-ui` may use the managed GPU substrate but
+cannot depend on session, engine, API, project, or authored subsystems. `superi-session` composes
+portable application services above the public API and selected lower capability owners without
+depending on a window toolkit. `superi-desktop` may compose GPU, UI, and session only, keeping the
+winit host thin and preventing operating-system event code from becoming a second engine owner.
 
 `superi-bench` provides the stable Cargo benchmark boundary for decode, graph evaluation, upload,
 playback, cache, render, and project save/load. Run it with `cargo bench -p superi-bench`; use

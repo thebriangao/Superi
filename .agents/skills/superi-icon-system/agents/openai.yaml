@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Icon System"
+  short_description: "Create and validate original interface icons"
+  default_prompt: "Use $superi-icon-system to reuse or create a registered original Superi icon."

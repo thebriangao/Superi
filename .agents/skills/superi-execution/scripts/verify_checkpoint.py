@@ -17,7 +17,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[4]
 OPEN = ROOT / "open"
-FRONTEND = ROOT / "ci" / "frontend-smoke"
+API_CLIENT_CONTRACT = ROOT / "ci" / "api-client-contract"
+EDITORIAL_CONTRACTS = OPEN / "bindings" / "typescript" / "editorial-contracts"
 
 
 @dataclass(frozen=True)
@@ -94,8 +95,14 @@ def select_gates(paths: list[str], full: bool, temporary: Path) -> list[Gate]:
         }
         for path in paths
     )
-    frontend = full or has_prefix(paths, "ci/frontend-smoke/") or any(
-        path == ".github/workflows/frontend.yml" for path in paths
+    typescript_contracts = (
+        full
+        or has_prefix(
+            paths,
+            "ci/api-client-contract/",
+            "open/bindings/typescript/editorial-contracts/",
+        )
+        or any(path == ".github/workflows/typescript-contracts.yml" for path in paths)
     )
     rust = full or any(
         path.startswith("open/") and not path.endswith((".md", ".txt")) for path in paths
@@ -182,6 +189,11 @@ def select_gates(paths: list[str], full: bool, temporary: Path) -> list[Gate]:
                     OPEN,
                 ),
                 Gate(
+                    "generated API binding drift",
+                    ("cargo", "run", "--locked", "-p", "superi-api-bindings", "--", "check"),
+                    OPEN,
+                ),
+                Gate(
                     "canonical fixtures",
                     ("cargo", "run", "--locked", "-p", "superi-fixture-tool", "--", "check", "test-fixtures"),
                     OPEN,
@@ -240,13 +252,31 @@ def select_gates(paths: list[str], full: bool, temporary: Path) -> list[Gate]:
             ]
         )
 
-    if frontend:
+    if typescript_contracts:
         gates.extend(
             [
-                Gate("frontend locked install", ("npm", "ci"), FRONTEND),
-                Gate("frontend typecheck", ("npm", "run", "typecheck"), FRONTEND),
-                Gate("frontend production build", ("npm", "run", "build"), FRONTEND),
-                Gate("frontend contract tests", ("npm", "test"), FRONTEND),
+                Gate("API client locked install", ("npm", "ci"), API_CLIENT_CONTRACT),
+                Gate(
+                    "API client typecheck",
+                    ("npm", "run", "typecheck"),
+                    API_CLIENT_CONTRACT,
+                ),
+                Gate("API client contract tests", ("npm", "test"), API_CLIENT_CONTRACT),
+                Gate(
+                    "editorial contracts locked install",
+                    ("npm", "ci"),
+                    EDITORIAL_CONTRACTS,
+                ),
+                Gate(
+                    "editorial contracts typecheck",
+                    ("npm", "run", "typecheck"),
+                    EDITORIAL_CONTRACTS,
+                ),
+                Gate(
+                    "editorial contract tests",
+                    ("npm", "test"),
+                    EDITORIAL_CONTRACTS,
+                ),
             ]
         )
 

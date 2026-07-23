@@ -493,14 +493,15 @@ the matching delayed dry block to caller output.
 - `superi-engine::dispatcher` owns optional lifecycle-scoped automation state, serialized
   inspection and transaction execution, dynamic no-op event reservation, and complete replacement
   events. `superi-api` projects that engine boundary without a direct dependency on this crate.
-- `app/src-tauri/src/capabilities.rs` directly consumes only input and output device enumeration for
-  a strict System-panel observation. It preserves default configurations, channel counts, exact
+- `superi-session::capabilities` directly consumes only input and output device enumeration for a
+  portable native-host observation. It preserves default configurations, channel counts, exact
   sample-rate ranges, sample formats, buffer constraints, skipped-device evidence, and explicit
   channel-layout knowledge without creating, starting, playing, pausing, discarding, routing, or
   reconfiguring a stream.
-- The production editing workspace consumes the attached public automation replacement as read-only
-  clip detail. It correlates only exact `clip_gain` targets, signed sample positions, sample rates,
-  finite values, mode, and active-pass state, and adds no automation mutation or prepared curve.
+- The preserved editorial TypeScript contracts model the attached public automation replacement as
+  read-only clip detail. The retained native UI does not yet project this state. Any future
+  consumer must correlate only exact `clip_gain` targets, signed sample positions, sample rates,
+  finite values, mode, and active-pass state and must add no automation mutation or prepared curve.
 - `superi-project` owns clip-mix state inside the durable project aggregate and stores the canonical
   codec bytes as the singleton schema-4 audio component. Engine project command history restores
   authored clip-mix snapshots, while audio device, callback, meter, resampler, and prepared graph

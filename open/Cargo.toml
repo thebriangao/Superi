@@ -33,6 +33,7 @@ image = { version = "=0.25.6", default-features = false, features = ["bmp", "jpe
 image-webp = "=0.2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+base64 = "=0.22.1"
 specta = { version = "=1.0.5", default-features = false, features = ["serde", "typescript"] }
 pollster = "0.4"
 wgpu = "23"
@@ -41,12 +42,15 @@ winit = { version = "=0.30.13", default-features = false }
 sha2 = "=0.10.9"
 fs4 = { version = "=1.1.0", default-features = false, features = ["sync"] }
 rusqlite = { version = "=0.32.1", default-features = false, features = ["bundled"] }
-swash = { version = "=0.2.9", default-features = false, features = ["std"] }
+swash = { version = "=0.2.9", default-features = false, features = ["render", "std"] }
 # Swash permits newer skrifa releases whose compiler floor exceeds this workspace's Rust 1.80 floor.
 skrifa = { version = "=0.31.1", default-features = false, features = ["std"] }
 unicode-bidi = { version = "=0.3.18", default-features = false, features = ["hardcoded-data", "std"] }
 unicode-linebreak = "=0.1.5"
 font-test-data = "=0.5.0"
+accesskit = "=0.23.0"
+accesskit_winit = "=0.31.1"
+tempfile = "=3.20.0"
 oxideav-core = "=0.1.29"
 oxideav-mp3 = { git = "https://github.com/OxideAV/oxideav-mp3.git", rev = "f37901b5d9c691b113e96a3bb95645c67af1a046" }
 claxon = "=0.4.3"

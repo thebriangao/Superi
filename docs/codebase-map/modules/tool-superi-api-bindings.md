@@ -78,8 +78,9 @@ privileged engine route.
   status. The tool has no network, Tauri, UI, engine, project, or lower-subsystem dependency.
 - Cargo workspace tests consume the current-artifact contract automatically.
 - Contributors use `generate` after public DTO or registry changes and `check` during verification.
-- `ci/frontend-smoke` consumes the committed result through strict typechecking and a production
-  Vite bundle, but it does not invoke or depend on this Rust tool at runtime.
+- `ci/api-client-contract` and `open/bindings/typescript/editorial-contracts` consume the committed
+  result through strict typechecking and behavioral tests, but neither invokes or depends on this
+  Rust tool at runtime.
 
 ## Invariants and operational boundaries
 

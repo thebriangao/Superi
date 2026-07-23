@@ -1,0 +1,62 @@
+name: TypeScript contracts
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: typescript-contracts-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: public-api-client
+            directory: ci/api-client-contract
+          - name: editorial-behavior
+            directory: open/bindings/typescript/editorial-contracts
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install declared Node.js version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: ${{ matrix.directory }}/.node-version
+          cache: npm
+          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
+
+      - name: Record contract toolchain identity
+        working-directory: ${{ matrix.directory }}
+        run: |
+          node --version
+          npm --version
+          git rev-parse HEAD
+
+      - name: Install locked dependencies
+        working-directory: ${{ matrix.directory }}
+        run: npm ci
+
+      - name: Typecheck contract source
+        working-directory: ${{ matrix.directory }}
+        run: npm run typecheck
+
+      - name: Run behavioral contracts
+        working-directory: ${{ matrix.directory }}
+        run: npm test

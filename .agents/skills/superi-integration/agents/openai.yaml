@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Integration"
+  short_description: "Integrate and deliver one checkpoint"
+  default_prompt: "Use $superi-integration to reconcile, verify, deliver, and document the checkpoint."

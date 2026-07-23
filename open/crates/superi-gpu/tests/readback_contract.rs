@@ -95,6 +95,11 @@ fn explicit_requests_preflight_layout_usage_format_region_and_budget() {
     assert_eq!(memory.stats().unwrap().resident_bytes(), 0);
     assert_eq!(resources.stats().count(GpuResourceKind::Buffer), 0);
 
+    let inspection =
+        TextureReadbackRequest::for_inspection(source.clone(), wgpu::Origin3d::ZERO, size(3, 2));
+    assert_eq!(inspection.boundary(), ReadbackBoundary::Inspection);
+    assert_eq!(ReadbackBoundary::Inspection.code(), "inspection");
+
     let no_copy = color_texture(
         &resources,
         "not copyable",

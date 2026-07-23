@@ -837,29 +837,25 @@ messages, contexts, paths, and source chains never serialize.
   binds one exact read grant for the resolved fixture path and no repository-wide authority. It
   does not expose public job submission or a live queue host.
 - `superi-api-bindings` is the repository-only generator and drift-check consumer. The committed
-  artifact is consumed by `ci/frontend-smoke` through strict TypeScript checking and a production
-  Vite bundle, including the extension query, event, resource, lifecycle, capability, and control
+  artifact is consumed by `ci/api-client-contract` and
+  `open/bindings/typescript/editorial-contracts` through strict TypeScript checking and behavioral
+  tests, including extension, event, resource, lifecycle, capability, control, and editorial
   declarations.
-- `superi-desktop` directly consumes `MediaCapabilitiesApi` for shell-level codec declaration
-  visibility. Its private retained snapshot is not a public API resource, event stream, registry,
-  transport method, codec session, or authored project record.
+- `superi-session` directly consumes `MediaCapabilitiesApi` for portable codec declaration
+  visibility and hosts the bounded generated transport over the managed engine connection. Its
+  private capability snapshot is not a public API resource, event stream, registry, codec session,
+  or authored project record.
 
-The production React and Tauri application consumes the committed generated contract through one
-injected client and retains the complete public editor snapshot. Its application owner issues
-revision-fenced project commands, while the editing workspace strictly projects the canonical
-timeline document and submits typed track, caption, and marker gestures, insert, overwrite, append, replace,
-lift, extract, backspace, undo, and redo only through `superi.project.command.execute`. Complete
-typed inverse marker batches provide exact immediate reversal without adding a public mutation
-schema, transport path, or authored-state authority. Caption SRT, WebVTT, and fresh transcript
-conversion remains a bounded desktop adapter that submits only these generated action DTOs. The
-same canvas supplements clips from the snapshot's canonical graph documents and
-attached audio automation, showing only real clip-scoped node, driver, and sample-key evidence
-while keeping canonical timeline selection distinct from shared UI selection. Native routing
-covers editor reads and durable project commands but remains closed to unregistered methods. No
-network transport, shell source loader, extension host,
-or closed-tier client is present. The local script interpreter is an in-process public API consumer,
-not a process sandbox or general-purpose language runtime. The local CLI host is a real filesystem
-and JSON-RPC process consumer, and the event stream remains transport-neutral.
+The portable native session layer consumes the Rust API directly, retains the complete public
+editor snapshot, routes revision-fenced project commands, and broadcasts ordered replacement
+events. The preserved editorial TypeScript package proves canonical timeline, caption, marker,
+multicam, retime, transition, nesting, playback, and project-lifecycle projections without
+providing a production JavaScript application. The retained native UI does not yet expose the full
+editor command catalog. Future presentation commands must enter through the same generated API,
+session, engine, project, and history owners. No network transport, shell source loader, extension
+host, or closed-tier client is present. The local script interpreter is an in-process public API
+consumer, not a process sandbox or general-purpose language runtime. The local CLI host is a real
+filesystem and JSON-RPC process consumer, and the event stream remains transport-neutral.
 
 ## Invariants and operational boundaries
 
@@ -1096,9 +1092,10 @@ The TypeScript binding contract renders twice and proves exact text equality, ev
 the generic project request and result, project replacement event, editable AI state, structured
 error, method, event, and resource maps, and the typed client. The repository tool adds current,
 missing, stale, nonmutating-check, deterministic-generation, and idempotent-publication proof. The
-strict frontend smoke package imports the committed artifact, typechecks project command, event,
-resource, AI, negotiation request and response, transport, and client use, and includes that
-consumer in the production Vite bundle.
+strict API client contract package imports the committed artifact and typechecks project command,
+event, resource, AI, negotiation request and response, transport, and client use. The editorial
+contract package adds behavioral proof for preserved presentation planning without building a
+production JavaScript bundle.
 
 dispatcher-owned export queue. They prove canonical handle rejection, strict wire round trips,
 stable kind and weighted priority vocabulary, nonblocking progress and ordered completion events,

@@ -1198,11 +1198,11 @@ higher-level compound operations must consume `tracks_affected_by_sync`, exact s
 and clip-owned time maps instead of recreating those policies. Add higher-level
 edit commands and graph evaluation only through their owning modules, and update project, engine,
 API, CLI, persistence, and fixture maps when those paths begin consuming native timeline state.
-Keep the production workspace projection strict against the canonical document revision and retain
+Keep every retained native or preserved TypeScript projection strict against the canonical document revision and retain
 exact ranges, stable identities, relationships, targeting, synchronization, and selection. Local
 playhead, range, scroll, and zoom may remain presentation intent, but authored gestures must enter
-through project and engine command ownership rather than reconstructing timeline policy in React.
-Frontend timing planners may translate direct user coordinates into this module's public operation
+through project and engine command ownership rather than reconstructing timeline policy in the UI.
+Presentation timing planners may translate direct user coordinates into this module's public operation
 forms only when they preserve exact clocks, typed identity domains, synchronized-track order, lock
 admission, and one atomic lower-owned publication. Native validation and history remain mandatory;
 the preview cannot be treated as canonical state.

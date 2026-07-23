@@ -1,0 +1,21 @@
+[package]
+name = "superi-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+accesskit = { workspace = true }
+image = { workspace = true }
+pollster = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+superi-gpu = { path = "../superi-gpu" }
+swash = { workspace = true }
+thiserror = { workspace = true }

@@ -1,7 +1,7 @@
-//! Explicit GPU-to-CPU boundaries for export and thumbnail pixels.
+//! Explicit GPU-to-CPU boundaries for export, thumbnail, and private inspection pixels.
 //!
 //! Ordinary processing has no readback entrypoint. Callers must name either an
-//! export or thumbnail boundary, provide the exact visible color-texture
+//! export, thumbnail, or private inspection boundary, provide the exact visible color-texture
 //! region, and submit the resulting copy through [`GpuSubmissionQueue`]. The
 //! source and staging allocations remain retained until the returned fence
 //! retires. Polling then removes wgpu row padding and returns immutable,
@@ -22,13 +22,15 @@ use crate::texture::GpuTexture;
 const COMPONENT: &str = "superi-gpu.readback";
 const WAIT_INTERVAL: Duration = Duration::from_millis(1);
 
-/// The only two operations permitted to move finished image pixels to the CPU.
+/// The only operations permitted to move finished image pixels to the CPU.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ReadbackBoundary {
     /// Delivery pixels requested by an encoder or image-sequence writer.
     Export,
     /// Display-ready pixels requested by a thumbnail cache or browser.
     Thumbnail,
+    /// Product pixels requested by the private deterministic interface inspector.
+    Inspection,
 }
 
 impl ReadbackBoundary {
@@ -38,6 +40,7 @@ impl ReadbackBoundary {
         match self {
             Self::Export => "export",
             Self::Thumbnail => "thumbnail",
+            Self::Inspection => "inspection",
         }
     }
 }
@@ -84,6 +87,22 @@ impl TextureReadbackRequest {
     ) -> Self {
         Self {
             boundary: ReadbackBoundary::Thumbnail,
+            source,
+            origin,
+            extent,
+            mip_level: 0,
+        }
+    }
+
+    /// Creates an explicit private-interface readback for one exact texture region.
+    #[must_use]
+    pub const fn for_inspection(
+        source: GpuTexture,
+        origin: wgpu::Origin3d,
+        extent: wgpu::Extent3d,
+    ) -> Self {
+        Self {
+            boundary: ReadbackBoundary::Inspection,
             source,
             origin,
             extent,

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Research and Planning"
+  short_description: "Research and plan one checkpoint"
+  default_prompt: "Use $superi-research-planning to derive a complete checkpoint plan from live evidence."

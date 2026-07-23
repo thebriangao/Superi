@@ -1782,9 +1782,9 @@ automation, playback, and export availability, pending and latest runtime observ
 resource identity, three-channel source meaning, stereo destination meaning, one explicit muted
 route, and a sample-exact 100-sample record gap between different clip sources.
 
-The downstream production frontend timeline contract proves that the canonical timeline bytes from
+The preserved editorial TypeScript timeline contract proves that the canonical timeline bytes from
 this aggregate can drive a strict identity-preserving canvas without moving mutation, history,
-playback, or runtime evaluation ownership into React.
+playback, or runtime evaluation ownership into presentation.
 Its clip-detail contract correlates that same selected revision with canonical graph topology and
 attached clip-gain automation, preserving real node, driver, sample, and selection identity without
 placing effect evaluation, automation mutation, media generation, or timeline edits in engine
@@ -2062,9 +2062,9 @@ media owner now has a real export consumer. Its project entry point preserves on
 document compilation, and the request adapter now resolves project-owned filesystem targets through
 the real local source path. Playback and export do not yet acquire the whole bundle directly from
 the document owner.
-The source-only registry now has a production desktop monitor consumer, but the retained session,
-exact seek state, durable in and out marks, and Tauri command fencing remain workspace application
-owners. This does not turn engine registry assembly into an editor, decoder, or presenter.
+The source-only registry has a portable `superi-session` monitor consumer, but the retained session,
+exact seek state, durable in and out marks, and command fencing remain session and project owners.
+This does not turn engine registry assembly into an editor, decoder, or presenter.
 Export still requires caller-supplied graph, delivery, and audio stage owners and returns elementary
 streams without muxing or persistence. The export queue retains results in process memory, uses
 cooperative checkpoints, and requires an explicit blocking-safe shutdown; it is not a persistent or

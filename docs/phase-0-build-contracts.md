@@ -1,6 +1,6 @@
 # Superi Phase 0 Build Contracts
 
-**Status:** Locked architectural specification
+**Status:** Locked foundation contracts, amended by Phase Infinity
 **Approved by:** Founder
 **Approval date:** 2026-07-12
 **Scope:** Open-source Superi only
@@ -21,10 +21,10 @@ complete every Phase 0 test or external-review requirement.
 Phase 0 may be marked fully complete only after all of the following evidence exists:
 
 - A written codec and patent review from qualified intellectual-property counsel.
-- A Tauri window containing React and a resizable native wgpu viewport has been demonstrated on
-  macOS, Windows, and Linux.
-- A public API command and ordered event round trip has been demonstrated without transferring
-  frame data through webview IPC.
+- The retained Rust scene has been demonstrated through a real native wgpu surface on macOS,
+  Windows, and Linux.
+- A public API command and ordered event round trip has been demonstrated without transferring bulk
+  media through a serialized application transport.
 - A representative OTIO sequence has completed a reference-validated semantic round trip.
 - The working color model has passed reference-transform validation.
 - Every subsystem has a named human owner.
@@ -68,25 +68,24 @@ justified. The architecture relies on the native backends supported by
 One memory-safe engine and one graphics abstraction minimize duplicated implementation work while
 preserving access to every major desktop GPU platform.
 
-## 3. Tauri, React, and TypeScript boundary
+## 3. Native retained application boundary
 
 ### Contract
 
-Tauri 2 is the desktop host, React is the interface framework, and TypeScript is the application
-language. React owns presentation, panel layout, transient interaction state, accessibility,
-keyboard routing, and optimistic visual feedback. It never owns authoritative project state or
-editing semantics.
+The desktop application is native Rust. `superi-ui` owns one retained scene for visual nodes, hit
+testing, focus, semantic output, original icons, typography, and deterministic paint. `superi-desktop`
+owns only the winit window, normalized operating-system input, the native wgpu surface, and portable
+session lifetime. The scene presents through the existing sole GPU submission owner and publishes an
+AccessKit tree from the same stable nodes.
 
 Every operation that changes a project, timeline, graph, render, export, or media resource crosses
-the generated client for the public Rust API. Tauri owns process startup, native windows,
-permissions, lifecycle integration, and the thin bridge into that API, using its supported Rust
-command and channel mechanisms described in the
-[Tauri documentation](https://v2.tauri.app/develop/calling-rust/).
+the public Rust API and its canonical lower owners. The UI may keep transient interaction and
+reversible preview state, but it never owns authoritative project state or editing semantics.
 
 ### Rationale
 
-This boundary provides the productivity of the web ecosystem without trapping critical editing
-behavior inside a particular interface implementation.
+This boundary makes native pixels, input, semantics, and inspection deterministic without granting
+the graphical application a privileged engine backdoor.
 
 ## 4. Shell-to-engine transport
 
@@ -96,15 +95,16 @@ behavior inside a particular interface implementation.
 defines namespaced methods, string request identifiers, structured errors, cancellation,
 transaction identifiers, capability negotiation, and explicit protocol versions.
 
-The Tauri shell exposes one thin command dispatcher and one ordered channel for event envelopes.
-External local clients use the same protocol over Unix domain sockets on macOS and Linux and named
-pipes on Windows. Events carry sequence numbers, project revision identifiers, and subscription
-identifiers so clients can detect gaps, reject stale state, and resynchronize deterministically.
+The native application consumes the Rust API in process through bounded ownership-preserving
+handoffs. External local clients use the same protocol over Unix domain sockets on macOS and Linux
+and named pipes on Windows. Events carry sequence numbers, project revision identifiers, and
+subscription identifiers so clients can detect gaps, reject stale state, and resynchronize
+deterministically.
 
-Frames, audio buffers, GPU textures, and other bulk media never enter the command or event
-protocol. JSON-RPC provides the transport-neutral request model, and Tauri channels provide ordered
-delivery for the shell bridge. See the [JSON-RPC 2.0 specification](https://www.jsonrpc.org/specification)
-and [Tauri channel guidance](https://v2.tauri.app/develop/calling-rust/#channels).
+Frames, audio buffers, GPU textures, and other bulk media never enter the command or event protocol.
+JSON-RPC provides the transport-neutral external request model. Native UI handoffs retain the same
+method, event, permission, revision, and error contracts without serializing in-process media. See
+the [JSON-RPC 2.0 specification](https://www.jsonrpc.org/specification).
 
 ### Rationale
 
@@ -115,22 +115,19 @@ from gaining privileged access or creating a second automation architecture.
 
 ### Contract
 
-Each editor window contains a dedicated native child view managed through a platform-specific
-`ViewportHost` interface. wgpu creates its presentation surface from that child view's native
-handle. React communicates only viewport geometry, scale factor, visibility, display selection,
-and normalized input events.
+Each editor window is a native winit window with one wgpu presentation surface. The window outlives
+the surface, publishes geometry and scale to the retained scene, and converts operating-system input
+into normalized retained events. The scene renderer uses the same `GpuDevice`,
+`GpuSubmissionQueue`, resource retirement, and recovery path as other native GPU consumers.
 
-Decoded frames remain GPU textures and are presented directly through the native surface. The
-unsafe handle conversion is isolated to one small implementation per platform, and the native
-view must outlive its wgpu surface, as required by the
-[wgpu surface API](https://docs.rs/wgpu/latest/wgpu/enum.SurfaceTargetUnsafe.html). Tauri exposes the
-required [native window handles](https://docs.rs/tauri/latest/tauri/webview/struct.WebviewWindow.html),
-but the webview never receives serialized frame pixels.
+Decoded frames remain GPU textures and are presented directly through the native surface. Private
+inspection renders the same scene through an offscreen wgpu target and explicit inspection-only
+readback. It does not create an alternate product renderer or normal playback readback path.
 
 ### Rationale
 
 Native presentation preserves GPU residency, HDR potential, low-latency output, and 8K scalability
-without binding the renderer to webview performance or IPC bandwidth.
+without binding the renderer to a serialized presentation transport.
 
 ### Display profile handoff
 
@@ -290,8 +287,9 @@ archived projects.
 
 ### Contract
 
-The operating-system main thread owns Tauri, the webview, window lifecycle, native viewport
-geometry, and input dispatch. It never performs engine work or waits synchronously for rendering. A
+The operating-system main thread owns the winit event loop, window lifecycle, native viewport
+geometry, retained input dispatch, and accessibility adapter. It never performs engine work or
+waits synchronously for rendering. A
 single engine-control thread owns authoritative mutable project state and serializes commands into
 transactions, while render coordinators consume immutable snapshots and schedule bounded work onto
 a CPU job pool.

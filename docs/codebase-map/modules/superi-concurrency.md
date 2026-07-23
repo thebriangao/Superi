@@ -2,7 +2,7 @@
 module_id: superi-concurrency
 source_paths:
   - open/crates/superi-concurrency
-source_hash: 9ce012335b1e1f30f8fd86ab8813f68f90a8c6eb1878cc28ddded4a4fd634310
+source_hash: ece67d9ea9a8245522444be1254d123debac53bcadc4944def673a5303ce2307
 source_files: 22
 mapped_at_commit: working-tree
 ---
@@ -29,10 +29,10 @@ Implemented responsibilities are:
   coordination.
 - Lock-free actor progress publication with observer-side starvation and wait-for-cycle analysis.
 
-GPU submission is only represented as an execution domain and a contract test against
-`superi-gpu`. The dedicated submission module remains a skeleton. The crate exposes building
-blocks, not a composed runtime: audio and engine construct selected domain, clock, and worker
-mechanisms, but no owner wires the complete state machines together.
+GPU submission is represented as an execution domain and a contract test against `superi-gpu`.
+The dedicated submission module remains a skeleton. The crate exposes building blocks rather than
+a complete application runtime: audio, engine, session, and retained UI consumers compose selected
+domain, clock, worker, lifecycle, and submission mechanisms.
 
 ## Source inventory
 
@@ -68,8 +68,8 @@ mechanisms, but no owner wires the complete state machines together.
 - `open/crates/superi-concurrency/src/submit.rs` is a three-line placeholder for the GPU command
   submission and synchronization model and contains no types or behavior.
 - `open/crates/superi-concurrency/src/threads.rs` implements execution-domain identities and
-  policies, thread-local ownership, scoped platform-domain entry, named managed-thread spawning,
-  domain checks, and typed join handles.
+  policies, thread-local ownership, scoped platform-domain entry for retained native windows and
+  input, named managed-thread spawning, domain checks, and typed join handles.
 - `open/crates/superi-concurrency/tests/av_sync_contract.rs` verifies signed drift, playback-domain
   enforcement, wait, present, correction, protected-drop, starvation, discontinuity, validation,
   and statistics behavior.
@@ -344,13 +344,18 @@ Production dependencies and internal relationships are:
   handoff preservation tests.
 
 Direct workspace consumers declared in manifests are `superi-graph`, `superi-audio`,
-`superi-cache`, and `superi-engine`. `superi-graph` does not import runtime surfaces in production source.
+`superi-cache`, `superi-engine`, `superi-session`, and `superi-ui`. `superi-graph` does not import
+runtime surfaces in production source.
 `superi-audio::graph` enforces `ExecutionDomain::Audio` at its prepared processing boundary.
 `superi-audio::sync` enforces it for exact callback scheduling and audio-master publication, while
 `superi-audio::playback` enters it inside the production output callback and advances the same clock.
 `superi-cache::render` owns a `BoundedWorkerPool`, submits exact `JobKind::Cache` work at
 `JobPriority::Background` with `JobControl`, exposes typed task completion and worker snapshots,
 and composes queue-local exact-frame single-flight over the generic pool.
+`superi-session` composes the lifecycle coordinator, EngineControl and Playback threads, and a
+bounded background worker pool into portable application services. `superi-ui` uses the managed
+GPU submission owner for both native presentation and classified private inspection without
+creating a second queue.
 `superi-engine::proxy_substitution` consumes
 `DerivedQuality`, `DerivedFallbackPolicy`, `DerivedMediaCandidate`, `DerivedMediaRequest`, and
 `DerivedMediaSelection` without constructing the runtime. `superi-engine::playback` enforces the

@@ -28,13 +28,13 @@ The library exports `artifacts`, `audit`, `capabilities`, `pipelines`, and `runt
 
 ## Architecture and data flow
 
-The only implemented data flow is read-only discovery. `discover_local_capabilities` constructs a schema-1 value with `Unavailable` runtime state, required local-only execution, required editable artifacts, and an empty pipeline list. The desktop shell converts that value into its strict four-domain hardware snapshot and renders it in the System panel. No AI call loads a model, accepts media, produces graph state, starts work, or performs local or remote inference.
+The only implemented data flow is read-only discovery. `discover_local_capabilities` constructs a schema-1 value with `Unavailable` runtime state, required local-only execution, required editable artifacts, and an empty pipeline list. `superi-session::capabilities` converts that value into its portable hardware snapshot for native hosts. No AI call loads a model, accepts media, produces graph state, starts work, or performs local or remote inference.
 
 ## Dependencies and consumers
 
 - Declared dependencies are `superi-core`, `superi-image`, and `superi-graph`. They are manifest-only dependencies today.
 - `superi-engine` declares `superi-ai` as a dependency, but no engine source references a `superi_ai` item.
-- `superi-desktop` directly consumes `discover_local_capabilities` for honest shell-level operational visibility. It does not use the crate as an execution path.
+- `superi-session` directly consumes `discover_local_capabilities` for honest native operational visibility. It does not use the crate as an execution path.
 
 ## Invariants and operational boundaries
 
@@ -45,7 +45,7 @@ The only implemented data flow is read-only discovery. `discover_local_capabilit
 
 ## Tests and verification
 
-`capabilities_contract.rs` proves the exact absent-runtime contract and prevents named future pipeline intent from being advertised as executable capability. The desktop Rust and frontend contracts separately prove the consumer projection, persistence, strict parsing, and visible unavailable state. There are no model, pipeline, artifact-production, or license-audit tests because those systems remain absent.
+`capabilities_contract.rs` proves the exact absent-runtime contract and prevents named future pipeline intent from being advertised as executable capability. Portable session contracts separately prove the consumer projection and unavailable state. There are no model, pipeline, artifact-production, or license-audit tests because those systems remain absent.
 
 ## Current status and risks
 
@@ -53,4 +53,4 @@ The capability owner is implemented, while the runtime, audit, pipeline, and art
 
 ## Maintenance notes
 
-When any AI path becomes real, update capability discovery only after the concrete runtime, model lifecycle, inputs, outputs, graph mutation path, offline enforcement, licensing proof, failure behavior, and tests exist. Recheck the desktop projection, engine consumer, and public artifact boundary together so availability, user control, and editable output remain coherent.
+When any AI path becomes real, update capability discovery only after the concrete runtime, model lifecycle, inputs, outputs, graph mutation path, offline enforcement, licensing proof, failure behavior, and tests exist. Recheck the session projection, native UI consumer, engine consumer, and public artifact boundary together so availability, user control, and editable output remain coherent.

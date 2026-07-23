@@ -2,7 +2,7 @@
 module_id: superi-gpu
 source_paths:
   - open/crates/superi-gpu
-source_hash: 3ccd5b7e2cf881c46a02f4a6878ee0cfcb72f6cd0e7342d05b6178179ed21d44
+source_hash: 25812ba051da4e15ad55b2c327daa28a8948a63f1a0c9f4dd0431d64ec25e579
 source_files: 34
 mapped_at_commit: working-tree
 ---
@@ -21,7 +21,8 @@ device lifetime that created them. Multiple adapters produce independent devices
 crate does not provide implicit cross-device copies, shared resources, synchronization, or failover.
 
 Media payloads stay GPU resident across upload, conversion, render work, and presentation. CPU
-movement is explicit at decoded-frame upload and export or thumbnail readback. The crate exposes raw
+movement is explicit at decoded-frame upload and export, thumbnail, or private inspection
+readback. The crate exposes raw
 wgpu resource borrows and re-exports `wgpu` for descriptor compatibility, but keeps the raw queue
 private. Normal command submission, completion polling, resource retirement, and presentation go
 through the single managed submission owner. Queue texture writes used by upload and recovery are
@@ -95,9 +96,9 @@ which must be performed by `superi-color`.
   planar and semiplanar formats, aligned allocation reuse, and final-clone pool return.
 - `open/crates/superi-gpu/src/submission.rs`: Owns the non-Send exclusive queue, scoped retained-owner
   bundles, monotonic fences, callback polling, ordered retirement, loss aborts, and blocking waits.
-- `open/crates/superi-gpu/src/readback.rs`: Implements named export and thumbnail boundaries,
-  texture-copy validation, budgeted staging, fence-gated mapping, row-padding removal, and result
-  ownership.
+- `open/crates/superi-gpu/src/readback.rs`: Implements named export, thumbnail, and private
+  inspection boundaries, texture-copy validation, budgeted staging, fence-gated mapping,
+  row-padding removal, and result ownership.
 - `open/crates/superi-gpu/src/diagnostics.rs`: Produces privacy-safe aggregate snapshots and optional
   timestamp-query timing for managed pass batches.
 - `open/crates/superi-gpu/src/surface.rs`: Classifies desktop native handles, retains shell hosts,
@@ -119,8 +120,9 @@ which must be performed by `superi-color`.
   target support, viewport validation, and retryable unavailable shell handles.
 - `open/crates/superi-gpu/tests/pass_contract.rs`: Proves managed pass preflight, ordering, ownership,
   retained pipeline lifetime, and stale-device submission rejection through the public API.
-- `open/crates/superi-gpu/tests/readback_contract.rs`: Proves readback layout and budgets, exact export
-  and thumbnail bytes, cancellation, fence ordering, and recovered-device rejection.
+- `open/crates/superi-gpu/tests/readback_contract.rs`: Proves readback layout and budgets, exact
+  export, thumbnail, and inspection boundaries and bytes, cancellation, fence ordering, and
+  recovered-device rejection.
 - `open/crates/superi-gpu/tests/recovery_contract.rs`: Proves native loss detection, generation
   replacement, ordered dependent reconstruction, initialization writes, notices, stale rejection,
   resumed work, and partial-failure cleanup.
@@ -192,7 +194,8 @@ which must be performed by `superi-color`.
   `GpuConversionLease` for submission retention.
 - `TextureReadbackRequest`, `ReadbackBoundary`, `TextureReadbackManager`,
   `EncodedTextureReadback`, `SubmittedTextureReadback`, `TextureReadbackLayout`, and
-  `TextureReadbackResult` make export and thumbnail readback explicit and single-use.
+  `TextureReadbackResult` make export, thumbnail, and private inspection readback explicit and
+  single-use.
 - `ViewportHost`, `NativeViewportKind`, `ViewportExtent`, `NativeViewportSurface`, and
   `ViewportFrame` own the native surface lifecycle. `ViewportFrame::submit_and_present` consumes the
   frame only after managed submission succeeds.
@@ -301,9 +304,9 @@ which must be performed by `superi-color`.
 
 ### Readback and surface sinks
 
-1. A readback request names export or thumbnail intent and validates a device-owned, single-sample,
-   two-dimensional, uncompressed color texture with `COPY_SRC`, an in-bounds mip and region, and a
-   supported storage format.
+1. A readback request names export, thumbnail, or private inspection intent and validates a
+   device-owned, single-sample, two-dimensional, uncompressed color texture with `COPY_SRC`, an
+   in-bounds mip and region, and a supported storage format.
 2. The manager reserves a padded staging buffer, records one texture-to-buffer copy, and retains
    source plus staging. Submission joins the same queue order as prior render work and starts async
    mapping.
@@ -314,13 +317,11 @@ which must be performed by `superi-color`.
    configures FIFO presentation, and acquires a frame tied to an exclusive surface borrow and the
    configuring device. `submit_and_present` validates queue identity, submits first, then presents
    without waiting for the fence.
-5. The production desktop owns four role-addressed surfaces on the sole GPU submission thread.
-   `superi-color` builds the selected sRGB or Display P3 presenter above each surface, validates an
-   exact active-monitor profile binding before acquisition and again before submission, and retains
-   canonical RGBA16F frame ownership through the managed fence. A desktop selection change keeps the
-   native child hidden until this owner successfully presents the replacement transform, and the
-   desktop rejects queued commands whose revision is no longer current. The GPU crate receives no
-   ICC bytes, display-discovery policy, React state, or alternate submission path.
+5. `superi-desktop` owns the production winit surface while `superi-ui` encodes the retained scene
+   through the sole managed submission queue. The private inspector uses the same compositor and
+   selects only the explicit inspection boundary after submission. Future color-managed viewer
+   surfaces continue to use `superi-color` above this substrate. The GPU crate receives no retained
+   widget state, display-discovery policy, or alternate submission path.
 
 ### Device loss and recovery
 
@@ -376,15 +377,14 @@ which must be performed by `superi-color`.
 - `superi-color/src/view.rs` wraps `NativeViewportSurface` with immutable monitor and ICC evidence.
   It delegates adapter filtering, configuration, acquisition, and submit-before-present to this
   crate, but rejects presentation if monitor/profile evidence changed after acquisition.
-- `app/src-tauri/src/viewport.rs` creates four production native hosts on the UI thread, moves their
-  surfaces into the sole GPU submission domain, composes exact per-role monitor freshness guards and
-  explicit sRGB or Display P3 `GpuDisplayPresenter` instances through `superi-color`, and waits for
-  retained presentation work before source or host teardown. Geometry updates and color selection
-  remain separate strict shell commands, and neither transports pixels, ICC bytes, or GPU handles.
-- `app/src-tauri/src/capabilities.rs` constructs only a `GpuInstance` and enumerates current adapter
-  snapshots for the strict System-panel capability catalog. It retains backend, device class,
-  driver, feature, limit, and WebGPU baseline observations without requesting a logical device,
-  creating a surface or resource, submitting work, or changing presentation selection.
+- `superi-ui` constructs one retained-scene renderer around the managed device and submission
+  queue, presents through a caller-owned native surface, and uses `ReadbackBoundary::Inspection`
+  only for deterministic private captures.
+- `superi-desktop` constructs the production native surface and translates resize and lifecycle
+  events without acquiring a raw queue or moving pixel ownership across an IPC seam.
+- `superi-session::capabilities` constructs only a `GpuInstance` and enumerates current adapter
+  snapshots for portable capability reporting. It does not request a logical device, create a
+  surface or resource, submit work, or change presentation selection.
 - `superi-concurrency` defines a blocking-capable `GpuSubmission` execution domain. Its integration
   contract constructs the real non-Send `GpuSubmissionQueue`, submits, and waits inside that owned
   thread. The GPU crate documents this placement but does not itself enforce the execution-domain
@@ -526,13 +526,12 @@ and broader one-way reference vectors remain important verification needs.
 ## Current status and risks
 
 The module is substantive across every owned source file. It implements device and resource
-ownership, decoded upload, conversion, passes, queue retirement, memory pressure, readback,
-diagnostics, native presentation, and explicit recovery. It contains no scaffold-only production
-path. The desktop now integrates four native presentation surfaces through `superi-color`, while
-several other boundaries intentionally stop short of application policy or full integration.
-The desktop shell additionally consumes read-only adapter enumeration for retained operational
-visibility. That observation is not device-creation success, presentation readiness, adapter
-selection, or durable project authority.
+ownership, decoded upload, conversion, passes, queue retirement, memory pressure, explicit
+readback, diagnostics, native presentation, and recovery. The retained UI consumes the real
+surface and submission path, and the private inspector consumes the classified inspection
+readback. Portable session capability reporting separately consumes read-only adapter enumeration.
+That observation is not device-creation success, presentation readiness, adapter selection, or
+durable project authority.
 
 - Cross-adapter transfer and synchronization are absent. Multi-adapter support is independent
   selection and device ownership only.
@@ -564,14 +563,13 @@ selection, or durable project authority.
   or out-of-memory recovery.
 - Surface automation is mostly handle-level. Real AppKit, Win32, WinRT, X11, XCB, and Wayland
   configure, acquire, resize, present, and loss behavior needs platform hardware coverage.
-- The desktop color consumer currently selects only built-in SDR sRGB and Display P3 transforms.
-  Exact monitor and ICC freshness are enforced above this crate, but arbitrary ICC tag evaluation,
-  HDR display modes, cross-adapter presentation, and non-macOS system-profile discovery remain
-  outside the GPU substrate and are not implied by successful native submission.
-- Public readback, timing, and snapshot APIs are contract-tested but not yet connected to non-test
-  workspace export, thumbnail, or telemetry consumers. Cache now consumes portable memory
-  accounting for budgeted retained values, while declared GPU dependencies in effects and graph
-  remain skeleton relationships.
+- The retained UI foundation currently paints application chrome into an SDR texture. Future
+  canonical viewer textures still require exact monitor binding, `superi-color` presentation,
+  arbitrary ICC evaluation policy, HDR modes, and cross-adapter decisions above this crate.
+- Inspection readback is integrated through private retained UI capture. Export and thumbnail
+  readback, timing, and snapshot APIs remain contract-tested without non-test delivery, thumbnail,
+  or telemetry consumers. Cache consumes portable memory accounting, while declared GPU
+  dependencies in effects and graph remain skeleton relationships.
 - Diagnostic snapshots and timing reports are explicitly user-safe, but shader and general error
   context can contain caller labels. Those errors require a separate redaction decision before
   entering user-safe telemetry.
@@ -600,12 +598,12 @@ selection, or durable project authority.
 - Surface changes must be reconciled with `superi-color/src/view.rs`; upload changes with
   `superi-engine/src/frame_upload.rs`; queue placement and blocking guidance with
   `superi-concurrency/src/threads.rs` and its GPU integration contract.
-- Changes to native presentation must also be reconciled with the four-role desktop owner, its
-  separate geometry and color commands, the exact monitor-binding freshness checks, both built-in
-  output transforms, and the rule that ICC bytes and pixels never cross React IPC.
+- Changes to native presentation must also be reconciled with `superi-ui`, `superi-desktop`, the
+  retained scene contract, and any future `superi-color` monitor-binding and output-transform
+  owner.
 - Changes to adapter enumeration, feature snapshots, or limit projection must also be reconciled
-  with the desktop capability owner, strict TypeScript adapter, and System-panel contract. Keep
-  discovery read-only and do not reinterpret adapter visibility as device or surface readiness.
+  with `superi-session::capabilities`. Keep discovery read-only and do not reinterpret adapter
+  visibility as device or surface readiness.
 - Memory-pool and reservation changes must be reconciled with `superi-cache::eviction` and
   `CacheMemoryPlacement::Device`, preserving exact managed-byte equality, rollback after refusal,
   matching-device LRU release before retry, and lock-free pressure cooperation across the cache tier

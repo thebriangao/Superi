@@ -2,7 +2,7 @@
 module_id: tool-superi-dependency-check
 source_paths:
   - open/tools/superi-dependency-check
-source_hash: acff2f3a226af5eceb9083f7812c71d175a002032a42666172e0b877b20411f1
+source_hash: 6a746cf6d726bd0d892b4213e473e11b5198e3f78dd7d8ce8c6c74ec5d50964e
 source_files: 4
 mapped_at_commit: working-tree
 ---
@@ -19,14 +19,15 @@ the reviewed architecture documented in `open/docs/STRUCTURE.md`.
   shared lint policy, library target, and command target.
 - `open/tools/superi-dependency-check/src/lib.rs`: Runs locked offline Cargo metadata, parses the
   workspace package graph, applies exact runtime and dev policies including cache consumption of
-  concurrency, project consumption of authored audio, plus the API contract's test-only
-  EngineControl edge, and reports deterministic errors.
+  concurrency, project consumption of authored audio, the API contract's test-only EngineControl
+  edge, and the native UI, portable session, and thin desktop tiers, then reports deterministic
+  errors.
 - `open/tools/superi-dependency-check/src/main.rs`: Runs the library against the containing workspace,
   prints a successful package and edge summary, and returns a failing process status on violations.
 - `open/tools/superi-dependency-check/tests/dependency_direction_contract.rs`: Covers the checked-in
   workspace, forbidden runtime and build edges, the reviewed project-to-audio edge and forbidden
-  reverse edge, both reviewed API test edges, separation of dev and production policy, and
-  fail-closed behavior for new runtime crates.
+  reverse edge, both reviewed API test edges, native presentation tiers, UI-to-session rejection,
+  separation of dev and production policy, and fail-closed behavior for new runtime crates.
 
 ## Public surface
 
@@ -52,6 +53,11 @@ unauthorized as direct production API dependencies.
 The project runtime policy reviews the downward edge to `superi-audio` for authored clip-mix state
 and its canonical codec. The reverse audio-to-project edge remains forbidden, keeping prepared DSP,
 devices, and callback ownership below project policy and persistence.
+
+The native presentation policy keeps `superi-ui` dependent only on the managed GPU substrate,
+allows `superi-session` to compose the public API and selected lower capability owners without a
+window toolkit, and allows `superi-desktop` to compose only GPU, UI, and session. Synthetic
+metadata proves UI cannot acquire session ownership.
 
 Violations are collected in a `BTreeSet`, making diagnostics stable for identical metadata. A clean
 graph returns counts, and the command prints the summary for contributor and CI use.
@@ -81,12 +87,12 @@ the direct command documented by `open/docs/STRUCTURE.md`.
 
 ## Tests and verification
 
-Five integration contracts exercise the current workspace and synthetic metadata failures. Fresh
+Six integration contracts exercise the current workspace and synthetic metadata failures. Fresh
 checkpoint proof passed the focused package and documentation tests plus the direct locked command.
-The direct command validated 19 runtime crates and 67 internal edges, including the reviewed
-`superi-cache` to `superi-concurrency` production edge for bounded background rendering and the
-test-only API to concurrency EngineControl edge. Synthetic metadata proves both reviewed API dev
-edges remain forbidden in production and the authored-audio edge cannot reverse direction.
+The direct command validated 22 runtime crates and 82 internal edges, including the retained UI,
+portable session, thin desktop, bounded cache rendering, and test-only API EngineControl edges.
+Synthetic metadata proves UI cannot depend on session, both reviewed API dev edges remain forbidden
+in production, and the authored-audio edge cannot reverse direction.
 
 ## Current status and risks
 

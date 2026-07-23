@@ -78,13 +78,23 @@ schemas and fields as opaque versioned data, and validates compatibility against
 reference implementation. The full contract lives in
 [`phase-0-build-contracts.md`](phase-0-build-contracts.md#6-opentimelineio-interchange).
 
-### 3.4 Application/UI layer: Tauri 2, React, and TypeScript *(locked)*
-**Decision:** The application/UI layer uses React and TypeScript in a Tauri 2 native host, with the Rust/wgpu engine underneath, communicating across the **open automation API** (§3.5).
-**Rationale:** A flagship editor's UI is a large, complex application *fused with* real-time GPU-rendered media, but the heavy lifting (real-time video rendering) is the **engine's** job on the GPU, not the UI's. The web layer renders the *interface around* the video (timeline, panels, controls, inspectors) with the engine's output composited into the viewport. This means the web stack does what it is genuinely excellent at (beautiful, modern, sophisticated application UI, deepest component/design ecosystem, by far the deepest talent pool, fast to polish) while the engine does what web tech is bad at (pushing heavy media pixels in real time). The one real concern, the UI↔engine boundary, is **precisely the seam we already chose to build well** as the open automation API, so it is a first-class part of the architecture rather than an awkward retrofit.
-**Rejected/deferred alternatives:**
-- **Native Rust UI**, architecturally purest (one language, no boundary, shares wgpu directly), but the Rust UI ecosystem is currently **too immature** for a UI that must be beautiful and polished from early on. *Worth revisiting as the ecosystem matures.*
-- **Custom GPU-rendered UI (on wgpu)**, the no-compromise-performance option and how a few of the most polished creative tools are built, but it means **building a UI framework** (text input, accessibility, layout, i18n) from scratch, a multi-year, resource-heavy commitment that would compete against shipping. **Consciously deferred to a post-ship / second-funding-round future.** The Rust/wgpu engine keeps this door open for later without lock-in.
-**Accepted costs:** a maintained **language/process boundary** between web UI and Rust engine (mitigated by the disciplined API seam); and the risk that web-shell UIs can feel marginally less native-crisp (mitigated by engineering care, keeping the timeline and viewport tight). The detailed boundary and native-viewport contract live in [`phase-0-build-contracts.md`](phase-0-build-contracts.md).
+### 3.4 Application/UI layer: custom retained Rust and wgpu *(locked)*
+
+**Decision:** Superi owns a native retained interface in Rust. One immutable scene supplies pixels,
+hit testing, focus, semantics, and inspection output. winit hosts native windows, AccessKit bridges
+assistive technology, and wgpu presents through the engine's existing GPU ownership. The UI drives
+authored behavior through the **open automation API** (§3.5).
+
+**Rationale:** A professional editor must combine dense interaction with real-time GPU media while
+remaining deterministic, inspectable, and native-crisp. Sharing Rust types, wgpu resources, and the
+single GPU submission owner avoids a privileged presentation transport and keeps bulk media out of
+serialized command paths. Retained stable identities make visual output, input replay, accessibility,
+and automated evidence different views of the same scene instead of separate implementations.
+
+**Accepted costs:** Superi must build and maintain layout, text, accessibility, input, docking,
+virtualization, and widget behavior deliberately. Those responsibilities are decomposed across Phase
+Infinity and may reuse focused infrastructure libraries, but no general-purpose interface toolkit
+owns product semantics or rendering.
 
 ### 3.5 The open automation API: the load-bearing seam *(locked: lives in the open core)*
 **Decision:** The editor exposes a **public automation/control API that lives in the open MIT core**. It is the single surface through which the UI, user scripting, open third-party extensions, **and the proprietary agent** all drive the editor.
@@ -232,12 +242,14 @@ The clean split is real and achievable: the engine team builds all §5 substance
 
 ## 9. Brand & visual direction
 
-Superi's visual identity is not yet defined. Its logo, palette, typography, themes, and broader brand
-system require a separate design process; this engineering document does not prescribe an astronomy
-motif or any other visual direction.
+Superi's foundation direction is **Obsidian Signal**: pure black working surfaces, precise seams,
+compact Inter typography, sparse semantic color, original geometric icons, and information-dense
+native panels. Cyan indicates active control and navigation, while violet, green, amber, and red are
+reserved for stable semantic roles.
 
-The product must still support a first-class dark environment for color-critical work, where low
-surround luminance aids accurate color and exposure judgment. Other theme defaults remain open.
+The color-critical environment maintains low surround luminance and keeps interface chrome separate
+from media color. Later design checkpoints expand the system through evidence-backed primitives
+rather than copying another product's artwork or control geometry.
 
 ---
 
@@ -258,16 +270,16 @@ These are **deliberately open**, and the document is stronger for marking them s
 | Engine language | Rust | Locked |
 | Graphics | wgpu (Vulkan/Metal/D3D12) | Locked |
 | Timeline model | Rust-native, OTIO-compatible | Locked; native Rust OTIO JSON interchange |
-| UI / application | Tauri 2 with React and TypeScript | Locked |
-| UI↔engine seam | Open automation API in the MIT core | Locked |
+| UI / application | Custom retained Rust scene, winit, wgpu, and AccessKit | Locked |
+| UI to engine seam | Open automation API in the MIT core | Locked |
 | Licensing (core) | Full MIT; encumbered codecs isolated behind media-I/O boundary | Locked (legal review pending) |
 | Core render primitive | Node graph; timeline compiles to it | Locked |
 | Color | Linear 16-bit float; OCIO-equivalent rebuilt in Rust | Locked |
 | Open/closed AI line | Transform-what-exists (open/local) vs generate-the-nonexistent (closed/server) | Locked |
 | Hard boundary | Open editor fully works offline; enforced by network-isolated CI + license audit | Locked |
-| Custom GPU UI | Deferred to post-ship / second round | Deferred (not foreclosed) |
-| Brand | Visual identity not yet defined; dark environment required for color-critical work | Open (designer execution) |
-| Typography | To be decided with the visual identity | Open |
+| Custom GPU UI | Retained native scene over the sole wgpu owner | Active foundation |
+| Brand | Obsidian Signal with retained Superi marks | Direction locked, system expanding |
+| Typography | Inter 4.1 seed with explicit fallback work | Locked seed |
 
 ---
 

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Superi Planning"
-  short_description: "Plan one checkpoint inline"
-  default_prompt: "Use $superi-planning to inspect and plan the assigned Superi checkpoint inline without subagents."

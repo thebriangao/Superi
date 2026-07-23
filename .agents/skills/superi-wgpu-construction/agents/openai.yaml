@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi wgpu Construction"
+  short_description: "Build retained native wgpu interfaces"
+  default_prompt: "Use $superi-wgpu-construction to implement the planned native UI slice safely."
